@@ -3,11 +3,14 @@ import difflib
 import hashlib
 import hmac
 import json
+import logging
 import os
 import re
+import threading
 import time
+import uuid
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Callable
 
 import requests
 import yaml
@@ -20,6 +23,9 @@ from rapidfuzz import fuzz
 from requests_oauthlib import OAuth1
 
 load_dotenv()
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+logger = logging.getLogger("lore_bridge")
 
 API_BASE = "https://api.obsidianportal.com/v1"
 CONSUMER_KEY = os.environ.get("OP_CONSUMER_KEY", "")
@@ -51,7 +57,7 @@ ALLOW_DELETE_FROM_GIT = os.environ.get("ALLOW_DELETE_FROM_GIT", "false").lower()
 
 app = FastAPI(
     title="Sindrel Lore Bridge",
-    version="0.4.1",
+    version="0.5.0",
     description="Bidirectional Obsidian Portal ↔ GitHub lore sync bridge with pull-through conflict protection.",
 )
 
@@ -64,6 +70,88 @@ _cache: dict[str, Any] = {
     "characters": {},
 }
 _author_id_cache: str | None = None
+_jobs: dict[str, "SyncJobRecord"] = {}
+_active_job_id: str | None = None
+_job_lock = threading.Lock()
+
+
+class JobError(BaseModel):
+    phase: str | None = None
+    path: str | None = None
+    op_id: str | None = None
+    title: str | None = None
+    detail: str
+
+
+class SyncJobRecord(BaseModel):
+    job_id: str
+    kind: str
+    status: str = "running"
+    phase: str = "starting"
+    current: int = 0
+    total: int = 0
+    current_title: str | None = None
+    current_path: str | None = None
+    message: str | None = None
+    errors: list[JobError] = []
+    started_at: str
+    finished_at: str | None = None
+    result: dict[str, Any] | None = None
+
+
+class JobStartResponse(BaseModel):
+    job_id: str
+    status: str = "running"
+    kind: str
+    message: str = "Sync job started. Poll GET /sync/jobs/{job_id} for progress."
+
+
+class ProgressReporter:
+    def __init__(self, job: SyncJobRecord | None = None) -> None:
+        self.job = job
+
+    def phase(
+        self,
+        phase: str,
+        *,
+        current: int = 0,
+        total: int = 0,
+        title: str | None = None,
+        path: str | None = None,
+        message: str | None = None,
+    ) -> None:
+        if self.job:
+            self.job.phase = phase
+            self.job.current = current
+            self.job.total = total
+            self.job.current_title = title
+            self.job.current_path = path
+            if message:
+                self.job.message = message
+        parts = [phase]
+        if total:
+            parts.append(f"{current}/{total}")
+        if title:
+            parts.append(title)
+        elif path:
+            parts.append(path)
+        if message:
+            parts.append(message)
+        logger.info("sync %s", " | ".join(parts))
+
+    def record_error(
+        self,
+        detail: str,
+        *,
+        phase: str | None = None,
+        path: str | None = None,
+        op_id: str | None = None,
+        title: str | None = None,
+    ) -> None:
+        err = JobError(phase=phase or (self.job.phase if self.job else None), path=path, op_id=op_id, title=title, detail=detail)
+        if self.job:
+            self.job.errors.append(err)
+        logger.error("sync error | %s | path=%s op_id=%s title=%s | %s", err.phase, path, op_id, title, detail)
 
 
 class SyncResult(BaseModel):
@@ -458,19 +546,23 @@ def gh_create_blob(content: str) -> str:
     return data["sha"]
 
 
-def gh_commit_changes(message: str, changes: list[TreeChange]) -> str | None:
+def gh_commit_changes(message: str, changes: list[TreeChange], progress: ProgressReporter | None = None) -> str | None:
     if not changes:
         return None
     by_path: dict[str, TreeChange] = {}
     for change in changes:
         by_path[change.path] = change
+    if progress:
+        progress.phase("committing_git", message=f"committing {len(by_path)} path(s)")
+    else:
+        logger.info("committing %d path(s) to GitHub: %s", len(by_path), message)
     ref = gh_api("GET", f"/git/ref/heads/{GITHUB_BRANCH}")
     head_sha = ref["object"]["sha"]
     head_commit = gh_api("GET", f"/git/commits/{head_sha}")
     tree_items: list[dict[str, Any]] = []
     for path, change in sorted(by_path.items()):
         if change.content is None:
-            tree_items.append({"path": path, "sha": None})
+            tree_items.append({"path": path, "mode": "100644", "type": "blob", "sha": None})
         else:
             tree_items.append({
                 "path": path,
@@ -491,6 +583,7 @@ def gh_commit_changes(message: str, changes: list[TreeChange]) -> str | None:
         },
     )
     gh_api("PATCH", f"/git/refs/heads/{GITHUB_BRANCH}", payload={"sha": new_commit["sha"]}, ok=(200,))
+    logger.info("git commit %s (%d paths)", new_commit["sha"][:8], len(by_path))
     return new_commit["sha"]
 
 
@@ -737,12 +830,23 @@ def sync_resource_from_portal(
     *,
     fetch_record,
     pages_state: dict[str, Any],
+    progress: ProgressReporter | None = None,
 ) -> tuple[int, list[TreeChange]]:
     record_id = meta.get("id")
     if not record_id:
         return 0, []
+    title = page_title(meta)
     known = pages_state.get(record_id, {})
-    record = fetch_record(record_id, force=True)
+    try:
+        record = fetch_record(record_id, force=True)
+    except HTTPException as exc:
+        if progress:
+            progress.record_error(str(exc.detail), op_id=record_id, title=title, phase=progress.job.phase if progress.job else None)
+        raise
+    except Exception as exc:
+        if progress:
+            progress.record_error(str(exc), op_id=record_id, title=title, phase=progress.job.phase if progress.job else None)
+        raise
     content, fm = page_to_markdown(record)
     path = page_path(record)
     legacy_path = known.get("repo_path")
@@ -775,22 +879,33 @@ def sync_resource_from_portal(
     return changed, changes
 
 
-def sync_from_portal_impl() -> SyncResult:
+def sync_from_portal_impl(progress: ProgressReporter | None = None) -> SyncResult:
+    progress = progress or ProgressReporter()
     ensure_github()
+    progress.phase("indexing", message="loading wiki and character indexes")
     ensure_index(force=True)
     ensure_characters_index(force=True)
+    wiki_total = len(_cache["index"])
+    char_total = len(_cache["characters_index"])
+    logger.info("indexed %d wiki records and %d characters", wiki_total, char_total)
     state = load_state()
     changed = 0
     changes: list[TreeChange] = []
     pages_state = state.setdefault("pages", {})
 
-    for meta in _cache["index"]:
-        item_changed, item_changes = sync_resource_from_portal(meta, fetch_record=fetch_page, pages_state=pages_state)
+    for i, meta in enumerate(_cache["index"], start=1):
+        progress.phase("fetching_wiki", current=i, total=wiki_total, title=page_title(meta))
+        item_changed, item_changes = sync_resource_from_portal(
+            meta, fetch_record=fetch_page, pages_state=pages_state, progress=progress,
+        )
         changed += item_changed
         changes.extend(item_changes)
 
-    for meta in _cache["characters_index"]:
-        item_changed, item_changes = sync_resource_from_portal(meta, fetch_record=fetch_character, pages_state=pages_state)
+    for i, meta in enumerate(_cache["characters_index"], start=1):
+        progress.phase("fetching_characters", current=i, total=char_total, title=page_title(meta))
+        item_changed, item_changes = sync_resource_from_portal(
+            meta, fetch_record=fetch_character, pages_state=pages_state, progress=progress,
+        )
         changed += item_changed
         changes.extend(item_changes)
 
@@ -801,20 +916,26 @@ def sync_from_portal_impl() -> SyncResult:
         commit_sha = gh_commit_changes(
             f"Sync from Obsidian Portal ({changed} changed)",
             changes,
+            progress=progress,
         )
+    progress.phase("done", message=f"changed {changed} record(s)")
     return SyncResult(changed_pages=changed, committed=bool(commit_sha), commit_sha=commit_sha, message="Pulled Obsidian Portal into GitHub")
 
 
-def publish_git_to_portal_impl(force_portal_pull: bool = True) -> PublishResult:
-    portal_pull = sync_from_portal_impl() if force_portal_pull else None
+def publish_git_to_portal_impl(force_portal_pull: bool = True, progress: ProgressReporter | None = None) -> PublishResult:
+    progress = progress or ProgressReporter()
+    portal_pull = sync_from_portal_impl(progress=progress) if force_portal_pull else None
     state = load_state()
     pages_state = state.setdefault("pages", {})
     conflicts: list[dict[str, Any]] = []
     created = updated = skipped = deleted = 0
-    repo_paths = set(gh_sync_files())
+    repo_paths = sorted(gh_sync_files())
+    repo_path_set = set(repo_paths)
     git_changes: list[TreeChange] = []
+    publish_total = len(repo_paths)
 
-    for path in sorted(repo_paths):
+    for i, path in enumerate(repo_paths, start=1):
+        progress.phase("publishing_portal", current=i, total=publish_total, path=path)
         file = gh_get_file(path)
         if not file:
             continue
@@ -830,72 +951,87 @@ def publish_git_to_portal_impl(force_portal_pull: bool = True) -> PublishResult:
         gm_info = parsed["gm_info"]
         page_id = fm.get("op_id")
         current_hash = content_hash(fm, body=body, gm_info=gm_info, description=description, bio=bio)
+        title = fm.get("name") or fm.get("title") or path
 
-        if page_id:
-            known = pages_state.get(page_id, {})
-            if current_hash == known.get("repo_hash_at_sync"):
-                skipped += 1
-                continue
-            if kind == "Character":
-                ensure_characters_index(force=True)
-                meta = next((c for c in _cache["characters_index"] if c.get("id") == page_id), None)
-            else:
-                ensure_index(force=True)
-                meta = next((p for p in _cache["index"] if p.get("id") == page_id), None)
-            if meta and known.get("op_updated_at") and meta.get("updated_at") != known.get("op_updated_at"):
-                conflicts.append({
-                    "path": path,
+        try:
+            if page_id:
+                known = pages_state.get(page_id, {})
+                if current_hash == known.get("repo_hash_at_sync"):
+                    skipped += 1
+                    continue
+                if kind == "Character":
+                    ensure_characters_index(force=True)
+                    meta = next((c for c in _cache["characters_index"] if c.get("id") == page_id), None)
+                else:
+                    ensure_index(force=True)
+                    meta = next((p for p in _cache["index"] if p.get("id") == page_id), None)
+                if meta and known.get("op_updated_at") and meta.get("updated_at") != known.get("op_updated_at"):
+                    conflicts.append({
+                        "path": path,
+                        "op_id": page_id,
+                        "op_kind": kind,
+                        "reason": "Obsidian Portal changed after the repo's last synced base",
+                        "portal_updated_at": meta.get("updated_at"),
+                        "known_updated_at": known.get("op_updated_at"),
+                    })
+                    continue
+                progress.phase("publishing_portal", current=i, total=publish_total, path=path, title=title)
+                if kind == "Character":
+                    pushed = update_op_character(page_id, fm, description, bio, gm_info)
+                else:
+                    pushed = update_op_page(page_id, fm, body, gm_info)
+                updated += 1
+                pages_state[page_id] = {
+                    "repo_path": path,
                     "op_id": page_id,
                     "op_kind": kind,
-                    "reason": "Obsidian Portal changed after the repo's last synced base",
-                    "portal_updated_at": meta.get("updated_at"),
-                    "known_updated_at": known.get("op_updated_at"),
-                })
-                continue
-            if kind == "Character":
-                pushed = update_op_character(page_id, fm, description, bio, gm_info)
+                    "op_slug": pushed.get("slug"),
+                    "op_updated_at": pushed.get("updated_at"),
+                    "repo_hash_at_sync": portal_record_hash(pushed, fm),
+                    "last_synced_title": pushed.get("title"),
+                }
             else:
-                pushed = update_op_page(page_id, fm, body, gm_info)
-            updated += 1
-            pages_state[page_id] = {
-                "repo_path": path,
-                "op_id": page_id,
-                "op_kind": kind,
-                "op_slug": pushed.get("slug"),
-                "op_updated_at": pushed.get("updated_at"),
-                "repo_hash_at_sync": portal_record_hash(pushed, fm),
-                "last_synced_title": pushed.get("title"),
-            }
-        else:
-            if not ALLOW_CREATE_FROM_GIT:
-                skipped += 1
-                continue
-            if kind == "Character":
-                pushed = create_op_character(fm, description, bio, gm_info)
-            else:
-                pushed = create_op_page(fm, body, gm_info)
-            created += 1
-            new_content, new_fm = page_to_markdown(pushed)
-            git_changes.append(TreeChange(path, new_content))
-            pages_state[pushed["id"]] = {
-                "repo_path": path,
-                "op_id": pushed["id"],
-                "op_kind": kind,
-                "op_slug": pushed.get("slug"),
-                "op_updated_at": pushed.get("updated_at"),
-                "repo_hash_at_sync": portal_record_hash(pushed, new_fm),
-                "last_synced_title": pushed.get("title"),
-            }
+                if not ALLOW_CREATE_FROM_GIT:
+                    skipped += 1
+                    continue
+                progress.phase("publishing_portal", current=i, total=publish_total, path=path, title=title)
+                if kind == "Character":
+                    pushed = create_op_character(fm, description, bio, gm_info)
+                else:
+                    pushed = create_op_page(fm, body, gm_info)
+                created += 1
+                new_content, new_fm = page_to_markdown(pushed)
+                git_changes.append(TreeChange(path, new_content))
+                pages_state[pushed["id"]] = {
+                    "repo_path": path,
+                    "op_id": pushed["id"],
+                    "op_kind": kind,
+                    "op_slug": pushed.get("slug"),
+                    "op_updated_at": pushed.get("updated_at"),
+                    "repo_hash_at_sync": portal_record_hash(pushed, new_fm),
+                    "last_synced_title": pushed.get("title"),
+                }
+        except HTTPException as exc:
+            progress.record_error(str(exc.detail), phase="publishing_portal", path=path, op_id=page_id, title=title)
+            raise
+        except Exception as exc:
+            progress.record_error(str(exc), phase="publishing_portal", path=path, op_id=page_id, title=title)
+            raise
 
     if ALLOW_DELETE_FROM_GIT:
+        progress.phase("deleting_portal", message="checking deleted repo files")
         for page_id, known in list(pages_state.items()):
             path = known.get("repo_path")
-            if path and path not in repo_paths:
+            if path and path not in repo_path_set:
                 kind = known.get("op_kind") or ("Character" if path.startswith(f"{LORE_CHARACTERS_DIR}/") else "Wiki")
-                if kind == "Character":
-                    op_delete(f"/campaigns/{CAMPAIGN_ID}/characters/{page_id}.json")
-                else:
-                    op_delete(f"/campaigns/{CAMPAIGN_ID}/wikis/{page_id}.json")
+                try:
+                    if kind == "Character":
+                        op_delete(f"/campaigns/{CAMPAIGN_ID}/characters/{page_id}.json")
+                    else:
+                        op_delete(f"/campaigns/{CAMPAIGN_ID}/wikis/{page_id}.json")
+                except HTTPException as exc:
+                    progress.record_error(str(exc.detail), phase="deleting_portal", path=path, op_id=page_id)
+                    raise
                 deleted += 1
                 del pages_state[page_id]
 
@@ -912,7 +1048,9 @@ def publish_git_to_portal_impl(force_portal_pull: bool = True) -> PublishResult:
         message = "Publish to Obsidian Portal"
         if parts:
             message += f" ({', '.join(parts)})"
-        gh_commit_changes(message, git_changes)
+        gh_commit_changes(message, git_changes, progress=progress)
+
+    progress.phase("done", message=f"created={created} updated={updated} skipped={skipped} conflicts={len(conflicts)}")
     return PublishResult(
         portal_pull=portal_pull,
         created=created,
@@ -923,6 +1061,68 @@ def publish_git_to_portal_impl(force_portal_pull: bool = True) -> PublishResult:
         ok=len(conflicts) == 0,
         message="Published GitHub main to Obsidian Portal" if not conflicts else "Conflicts found; no conflicted files were published",
     )
+
+
+# ----------------------------- sync jobs -----------------------------
+
+def active_job() -> SyncJobRecord | None:
+    with _job_lock:
+        if _active_job_id and _active_job_id in _jobs:
+            job = _jobs[_active_job_id]
+            if job.status == "running":
+                return job
+    return None
+
+
+def start_sync_job(kind: str, runner: Callable[[ProgressReporter], Any]) -> str:
+    with _job_lock:
+        current = active_job()
+        if current:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Sync job {current.job_id} is already running ({current.phase})",
+            )
+        job_id = uuid.uuid4().hex
+        job = SyncJobRecord(job_id=job_id, kind=kind, started_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))
+        _jobs[job_id] = job
+        global _active_job_id
+        _active_job_id = job_id
+
+    def execute() -> None:
+        progress = ProgressReporter(job)
+        try:
+            result = runner(progress)
+            job.status = "completed"
+            job.result = result.model_dump() if hasattr(result, "model_dump") else result
+            job.message = getattr(result, "message", None) or "Completed"
+            logger.info("sync job %s completed (%s)", job_id, kind)
+        except Exception as exc:
+            job.status = "failed"
+            if isinstance(exc, HTTPException):
+                detail = str(exc.detail)
+            else:
+                detail = str(exc)
+            job.message = detail[:500]
+            if not job.errors:
+                job.errors.append(JobError(phase=job.phase, detail=detail))
+            logger.exception("sync job %s failed (%s)", job_id, kind)
+        finally:
+            job.finished_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+            with _job_lock:
+                global _active_job_id
+                if _active_job_id == job_id:
+                    _active_job_id = None
+
+    threading.Thread(target=execute, daemon=True).start()
+    logger.info("sync job %s started (%s)", job_id, kind)
+    return job_id
+
+
+def get_sync_job(job_id: str) -> SyncJobRecord:
+    job = _jobs.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Unknown sync job: {job_id}")
+    return job
 
 
 # ----------------------------- API routes -----------------------------
@@ -1017,14 +1217,35 @@ def sync_legacy() -> SyncResult:
     return SyncResult(changed_pages=len(_cache["index"]), committed=False, message="Refreshed in-memory Obsidian Portal index only")
 
 
-@app.post("/sync/from-portal", response_model=SyncResult, dependencies=[Depends(require_auth)])
-def sync_from_portal() -> SyncResult:
+@app.post("/sync/from-portal", dependencies=[Depends(require_auth)])
+def sync_from_portal(async_mode: bool = Query(False, alias="async")):
+    if async_mode:
+        job_id = start_sync_job("from-portal", lambda progress: sync_from_portal_impl(progress))
+        body = JobStartResponse(job_id=job_id, kind="from-portal").model_dump()
+        return JSONResponse(status_code=202, content=body)
     return sync_from_portal_impl()
 
 
-@app.post("/sync/publish-main", response_model=PublishResult, dependencies=[Depends(require_auth)])
-def publish_main() -> PublishResult:
+@app.post("/sync/publish-main", dependencies=[Depends(require_auth)])
+def publish_main(async_mode: bool = Query(False, alias="async")):
+    if async_mode:
+        job_id = start_sync_job("publish-main", lambda progress: publish_git_to_portal_impl(force_portal_pull=True, progress=progress))
+        body = JobStartResponse(job_id=job_id, kind="publish-main").model_dump()
+        return JSONResponse(status_code=202, content=body)
     return publish_git_to_portal_impl(force_portal_pull=True)
+
+
+@app.get("/sync/jobs/current", response_model=SyncJobRecord, dependencies=[Depends(require_auth)])
+def sync_job_current() -> SyncJobRecord:
+    job = active_job()
+    if not job:
+        raise HTTPException(status_code=404, detail="No sync job is currently running")
+    return job
+
+
+@app.get("/sync/jobs/{job_id}", response_model=SyncJobRecord, dependencies=[Depends(require_auth)])
+def sync_job_status(job_id: str) -> SyncJobRecord:
+    return get_sync_job(job_id)
 
 
 @app.post("/github/webhook")

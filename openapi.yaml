@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Sindrel Lore Bridge
-  version: 0.4.1
+  version: 0.5.0
   description: Live lore retrieval and Git-backed sync bridge for an Obsidian Portal campaign wiki and characters.
 servers:
   - url: https://YOUR_DEPLOYED_DOMAIN_HERE
@@ -72,14 +72,45 @@ paths:
     post:
       operationId: syncFromPortal
       summary: Pull latest Obsidian Portal wiki pages and characters into the configured GitHub repo.
+      parameters:
+        - name: async
+          in: query
+          required: false
+          schema: { type: boolean, default: false }
       responses:
         '200': { description: Sync result }
+        '202': { description: Async job started }
   /sync/publish-main:
     post:
       operationId: publishMain
       summary: Pull Obsidian Portal first, then publish changed Textile files from GitHub main back to Obsidian Portal wiki pages and characters.
+      parameters:
+        - name: async
+          in: query
+          required: false
+          schema: { type: boolean, default: false }
       responses:
         '200': { description: Publish result }
+        '202': { description: Async job started }
+  /sync/jobs/current:
+    get:
+      operationId: syncJobCurrent
+      summary: Return the currently running sync job, if any.
+      responses:
+        '200': { description: Job status }
+        '404': { description: No active job }
+  /sync/jobs/{job_id}:
+    get:
+      operationId: syncJobStatus
+      summary: Poll progress and result for a sync job.
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Job status }
+        '404': { description: Unknown job }
   /diff/repo-vs-portal:
     get:
       operationId: diffRepoVsPortal

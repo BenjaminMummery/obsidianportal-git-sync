@@ -9,6 +9,31 @@ jobs:
     steps:
       - name: Trigger bridge pull-through sync
         run: |
-          curl -fsS -X POST \
-            -H "Authorization: Bearer ${{ secrets.LORE_BRIDGE_API_KEY }}" \
-            "${{ secrets.LORE_BRIDGE_URL }}/sync/from-portal"
+          set -euo pipefail
+          BASE="${{ secrets.LORE_BRIDGE_URL }}"
+          AUTH="Authorization: Bearer ${{ secrets.LORE_BRIDGE_API_KEY }}"
+          start="$(curl -fsS -X POST -H "$AUTH" "${BASE%/}/sync/from-portal?async=true")"
+          job_id="$(python3 - <<'PY' "$start"
+          import json, sys
+          print(json.loads(sys.argv[1])["job_id"])
+          PY
+          )"
+          echo "Started job ${job_id}"
+          while true; do
+            job="$(curl -fsS -H "$AUTH" "${BASE%/}/sync/jobs/${job_id}")"
+            python3 - <<'PY' "$job"
+          import json, sys
+          job = json.loads(sys.argv[1])
+          print(f"[{job['status']}] {job['phase']} {job.get('current', 0)}/{job.get('total', 0)} {job.get('current_title') or job.get('current_path') or ''}")
+          if job["status"] == "completed":
+              sys.exit(0)
+          if job["status"] == "failed":
+              print(json.dumps(job, indent=2))
+              sys.exit(1)
+          sys.exit(2)
+          PY
+            code=$?
+            if [ "$code" -eq 0 ]; then break; fi
+            if [ "$code" -eq 1 ]; then exit 1; fi
+            sleep 5
+          done

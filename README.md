@@ -39,6 +39,7 @@ All of the above require `Authorization: Bearer <LORE_BRIDGE_API_KEY>`.
   - Writes Textile files (YAML frontmatter + Textile body) into GitHub.
   - Commits all changes in a single Git commit (via the Git Trees API).
   - Updates `metadata/sync-state.json`.
+  - Logs progress to stdout; optional `?async=true` returns a job id to poll.
 
 - `POST /sync/publish-main`
   - First runs `/sync/from-portal`.
@@ -46,6 +47,10 @@ All of the above require `Authorization: Bearer <LORE_BRIDGE_API_KEY>`.
   - Detects repo-side changes.
   - Updates or creates Obsidian Portal wiki pages and characters.
   - Refuses to publish records with detected conflicts.
+  - Optional `?async=true` for progress polling.
+
+- `GET /sync/jobs/{job_id}` — poll async sync progress and final result.
+- `GET /sync/jobs/current` — currently running job, if any.
 
 - `POST /github/webhook`
   - Optional GitHub webhook endpoint for push-to-main publishing.
@@ -312,13 +317,38 @@ Expected (public JSON):
 
 ### Step 8 — First sync (portal → GitHub)
 
+**Recommended (async with progress):**
+
+```bash
+set -a && source .env && set +a
+
+# Start job
+curl -sS -X POST \
+  -H "Authorization: Bearer ${LORE_BRIDGE_API_KEY}" \
+  "${LORE_BRIDGE_URL}/sync/from-portal?async=true"
+
+# Poll (replace JOB_ID from response)
+curl -sS -H "Authorization: Bearer ${LORE_BRIDGE_API_KEY}" \
+  "${LORE_BRIDGE_URL}/sync/jobs/JOB_ID"
+```
+
+Or use the helper script (async + poll + git pull):
+
+```bash
+./scripts/lore_pull.sh
+```
+
+**Blocking (waits until finished, no live progress in terminal):**
+
 ```bash
 curl -X POST \
   -H "Authorization: Bearer ${LORE_BRIDGE_API_KEY}" \
   "${LORE_BRIDGE_URL}/sync/from-portal"
 ```
 
-This can take **several minutes** on a first run while pages are fetched from Obsidian Portal. The HTTP request prints nothing until it finishes. The lore repo should receive **one commit** containing all changed files plus `metadata/sync-state.json`.
+Progress is always written to Render logs, e.g. `sync fetching_wiki | 12/82 | Osteomantic Archives`.
+
+This can take **several minutes** on a first run while pages are fetched from Obsidian Portal. The lore repo should receive **one commit** containing all changed files plus `metadata/sync-state.json`.
 
 Watch progress in the **lore repo** commits page:
 
@@ -415,7 +445,7 @@ set -a && source .env && set +a
 /path/to/obsidianportal-git-sync/scripts/lore_pull.sh
 ```
 
-That runs `POST /sync/from-portal` then `git pull --ff-only`.
+That starts an async sync, prints progress every 2 seconds, then runs `git pull --ff-only` when complete.
 
 ---
 
@@ -604,4 +634,4 @@ Before reading or editing campaign lore, call the bridge's sync_from_portal oper
 - Character avatars are not synced; only text fields and dynamic sheet JSON are mirrored.
 - Obsidian Portal **items** do not have a public API endpoint and cannot be synced.
 - Read/search API endpoints cover wiki pages only, not characters.
-- Sync requests are blocking with no progress streaming (see GitHub issues for future work).
+- Async job status is in-memory only; redeploy/restart clears job history.
