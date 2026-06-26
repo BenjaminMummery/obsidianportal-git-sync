@@ -57,7 +57,7 @@ ALLOW_DELETE_FROM_GIT = os.environ.get("ALLOW_DELETE_FROM_GIT", "false").lower()
 
 app = FastAPI(
     title="Sindrel Lore Bridge",
-    version="0.5.2",
+    version="0.5.3",
     description="Bidirectional Obsidian Portal ↔ GitHub lore sync bridge with pull-through conflict protection.",
 )
 
@@ -140,8 +140,7 @@ class ProgressReporter:
             self.job.total = total
             self.job.current_title = title
             self.job.current_path = path
-            if message:
-                self.job.message = message
+            self.job.message = message
         parts = [phase]
         if total:
             parts.append(f"{current}/{total}")
@@ -1096,7 +1095,7 @@ def refresh_sync_status_cache(*, force: bool = False) -> dict[str, Any]:
     try:
         state = load_state()
         update_sync_status_cache(state)
-    except HTTPException:
+    except Exception:
         pass
     return _sync_status_cache
 
@@ -1212,6 +1211,8 @@ def get_sync_job(job_id: str) -> SyncJobRecord:
 # ----------------------------- API routes -----------------------------
 
 def health_payload(*, authenticated: bool) -> dict[str, Any]:
+    sync_times = refresh_sync_status_cache()
+    running = active_job()
     payload: dict[str, Any] = {
         "ok": True,
         "service": app.title,
@@ -1220,12 +1221,21 @@ def health_payload(*, authenticated: bool) -> dict[str, Any]:
         "github_configured": bool(GITHUB_TOKEN and GITHUB_OWNER and GITHUB_REPO),
         "branch": GITHUB_BRANCH,
         "message": "Bridge is running. Sync and lore API endpoints require Authorization: Bearer <LORE_BRIDGE_API_KEY>.",
+        "last_portal_pull": sync_times.get("last_portal_pull"),
+        "last_git_publish": sync_times.get("last_git_publish"),
+        "active_job": job_public_snapshot(running) if running else None,
     }
     if authenticated:
         payload["last_sync"] = _cache["last_sync"]
         payload["wiki_index_cached"] = bool(_cache["index"])
         payload["characters_index_cached"] = bool(_cache["characters_index"])
     return payload
+
+
+def _format_ts_display(value: str | None) -> str:
+    if not value:
+        return "never"
+    return f'{value.replace("T", " ").rstrip("Z")} UTC'
 
 
 def status_html(payload: dict[str, Any]) -> str:
@@ -1237,6 +1247,79 @@ def status_html(payload: dict[str, Any]) -> str:
     extra = ""
     if "last_sync" in payload:
         extra = f'<p class="meta">In-memory index last refreshed: {payload["last_sync"] or "not yet"}</p>'
+
+    job = payload.get("active_job")
+    job_html = ""
+    poll_script = ""
+    if job and job.get("status") == "running":
+        percent = job.get("percent")
+        width = f"{percent}%" if percent is not None else "35%"
+        indeterminate = "" if percent is not None else " indeterminate"
+        count = ""
+        if job.get("total"):
+            count = f' <span id="sync-count">{job["current"]}/{job["total"]}</span>'
+        detail = job.get("detail") or job.get("message") or ""
+        job_html = f"""
+  <section id="sync-progress" class="sync-panel" aria-live="polite">
+    <p class="sync-heading"><strong id="sync-kind">{job.get("kind_label", "Sync")}</strong> · <span id="sync-phase">{job.get("phase_label", "Running")}</span>{count}</p>
+    <div class="progress-track{indeterminate}" id="sync-track"><div class="progress-fill" id="sync-bar" style="width:{width}"></div></div>
+    <p class="meta" id="sync-detail">{detail}</p>
+  </section>"""
+        poll_script = """
+  <script>
+    (function () {
+      function fmt(ts) {
+        if (!ts) return "never";
+        try { return new Date(ts.endsWith("Z") ? ts : ts + "Z").toLocaleString(); }
+        catch (e) { return ts; }
+      }
+      function apply(data) {
+        var portal = document.getElementById("last-portal-pull");
+        var publish = document.getElementById("last-git-publish");
+        if (portal) portal.textContent = fmt(data.last_portal_pull);
+        if (publish) publish.textContent = fmt(data.last_git_publish);
+        var job = data.active_job;
+        var panel = document.getElementById("sync-progress");
+        if (!job || job.status !== "running") {
+          if (panel) location.reload();
+          return;
+        }
+        if (!panel) { location.reload(); return; }
+        document.getElementById("sync-kind").textContent = job.kind_label || job.kind;
+        document.getElementById("sync-phase").textContent = job.phase_label || job.phase;
+        var count = document.getElementById("sync-count");
+        if (job.total) {
+          if (!count) {
+            count = document.createElement("span");
+            count.id = "sync-count";
+            document.getElementById("sync-phase").after(" ", count);
+          }
+          count.textContent = job.current + "/" + job.total;
+        } else if (count) {
+          count.remove();
+        }
+        var track = document.getElementById("sync-track");
+        var bar = document.getElementById("sync-bar");
+        if (job.percent != null) {
+          track.classList.remove("indeterminate");
+          bar.style.width = job.percent + "%";
+        } else {
+          track.classList.add("indeterminate");
+          bar.style.width = "35%";
+        }
+        document.getElementById("sync-detail").textContent = job.detail || job.message || "";
+      }
+      setInterval(function () {
+        fetch("/health", { headers: { Accept: "application/json" } })
+          .then(function (r) { return r.json(); })
+          .then(apply)
+          .catch(function () {});
+      }, 2000);
+    })();
+  </script>"""
+
+    portal_ts = _format_ts_display(payload.get("last_portal_pull"))
+    publish_ts = _format_ts_display(payload.get("last_git_publish"))
 
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -1255,6 +1338,12 @@ def status_html(payload: dict[str, Any]) -> str:
     .meta, .note {{ color: #555; font-size: 0.925rem; }}
     a {{ color: #1558d6; }}
     code {{ background: #f4f4f4; padding: 0.1rem 0.35rem; border-radius: 3px; }}
+    .sync-panel {{ margin: 1.25rem 0; padding: 1rem; background: #f8f9fc; border: 1px solid #e3e6ee; border-radius: 8px; }}
+    .sync-heading {{ margin: 0 0 0.75rem; }}
+    .progress-track {{ height: 0.55rem; background: #e3e6ee; border-radius: 999px; overflow: hidden; }}
+    .progress-fill {{ height: 100%; background: #1558d6; border-radius: 999px; transition: width 0.35s ease; }}
+    .progress-track.indeterminate .progress-fill {{ width: 35% !important; animation: sync-slide 1.2s ease-in-out infinite; }}
+    @keyframes sync-slide {{ 0% {{ transform: translateX(-120%); }} 100% {{ transform: translateX(320%); }} }}
   </style>
 </head>
 <body>
@@ -1267,8 +1356,14 @@ def status_html(payload: dict[str, Any]) -> str:
     {row("GitHub lore repo configured", payload["github_configured"])}
   </table>
   <p class="meta">Git branch: <code>{payload["branch"]}</code></p>
+  <table>
+    <tr><td>Last portal → GitHub sync</td><td id="last-portal-pull">{portal_ts}</td></tr>
+    <tr><td>Last GitHub → portal publish</td><td id="last-git-publish">{publish_ts}</td></tr>
+  </table>
+  {job_html}
   {extra}
   <p class="note">API docs: <a href="/docs">/docs</a> · JSON status: <a href="/health">/health</a></p>
+  {poll_script}
 </body>
 </html>"""
 
@@ -1307,7 +1402,7 @@ def sync_from_portal(async_mode: bool = Query(False, alias="async")):
         job_id = start_sync_job("from-portal", lambda progress: sync_from_portal_impl(progress))
         body = JobStartResponse(job_id=job_id, kind="from-portal").model_dump()
         return JSONResponse(status_code=202, content=body)
-    return sync_from_portal_impl()
+    return run_sync_job_blocking("from-portal", lambda progress: sync_from_portal_impl(progress))
 
 
 @app.post("/sync/publish-main", dependencies=[Depends(require_auth)])
@@ -1316,7 +1411,7 @@ def publish_main(async_mode: bool = Query(False, alias="async")):
         job_id = start_sync_job("publish-main", lambda progress: publish_git_to_portal_impl(force_portal_pull=True, progress=progress))
         body = JobStartResponse(job_id=job_id, kind="publish-main").model_dump()
         return JSONResponse(status_code=202, content=body)
-    return publish_git_to_portal_impl(force_portal_pull=True)
+    return run_sync_job_blocking("publish-main", lambda progress: publish_git_to_portal_impl(force_portal_pull=True, progress=progress))
 
 
 @app.get("/sync/jobs/current", response_model=SyncJobRecord, dependencies=[Depends(require_auth)])
@@ -1345,7 +1440,10 @@ async def github_webhook(request: Request, x_hub_signature_256: str | None = Hea
     commits = payload.get("commits") or []
     if commits and all((c.get("author") or {}).get("email") == GITHUB_AUTHOR_EMAIL for c in commits):
         return {"ok": True, "ignored": True, "reason": "Ignoring bridge-authored commit to avoid webhook loop"}
-    result = publish_git_to_portal_impl(force_portal_pull=True)
+    result = run_sync_job_blocking(
+        "publish-main",
+        lambda progress: publish_git_to_portal_impl(force_portal_pull=True, progress=progress),
+    )
     return result.model_dump()
 
 

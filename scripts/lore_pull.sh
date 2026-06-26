@@ -10,7 +10,17 @@ AUTH=(-H "Authorization: Bearer ${LORE_BRIDGE_API_KEY}")
 poll_job() {
   local job_id="$1"
   while true; do
+    set +e
     status_json="$(curl -fsS "${AUTH[@]}" "${BASE}/sync/jobs/${job_id}")"
+    poll_http=$?
+    set -e
+    if [ "$poll_http" -ne 0 ]; then
+      echo >&2
+      echo "Lost sync job ${job_id} (bridge restarted or job expired from memory)." >&2
+      echo "The sync did not finish — commits happen at the end. Check Render logs, then rerun:" >&2
+      echo "  ./scripts/lore_pull.sh" >&2
+      return 2
+    fi
     set +e
     python3 - <<'PY' "$status_json"
 import json, sys
@@ -79,5 +89,9 @@ fi
 rm -f "$start_tmp"
 
 poll_job "$job_id"
+poll_result=$?
+if [ "$poll_result" -ne 0 ]; then
+  exit "$poll_result"
+fi
 echo
 git pull --ff-only
