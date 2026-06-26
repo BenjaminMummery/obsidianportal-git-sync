@@ -994,16 +994,16 @@ def wants_html(request: Request) -> bool:
     return "text/html" in accept and "application/json" not in accept
 
 
-@app.get("/", response_class=HTMLResponse)
-def root(request: Request) -> HTMLResponse | JSONResponse:
+@app.get("/", response_class=HTMLResponse, response_model=None)
+def root(request: Request):
     payload = health_payload(authenticated=False)
     if wants_html(request):
         return HTMLResponse(status_html(payload))
     return JSONResponse(payload)
 
 
-@app.get("/health")
-def health(request: Request, authorization: str | None = Header(default=None)) -> HTMLResponse | JSONResponse:
+@app.get("/health", response_model=None)
+def health(request: Request, authorization: str | None = Header(default=None)):
     authenticated = bool(BRIDGE_KEY and authorization == f"Bearer {BRIDGE_KEY}")
     payload = health_payload(authenticated=authenticated)
     if wants_html(request):
