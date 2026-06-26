@@ -44,14 +44,32 @@ PY
 
 echo "Starting async sync at ${BASE}/sync/from-portal ..."
 
-start_json="$(curl -fsS -X POST "${AUTH[@]}" "${BASE}/sync/from-portal?async=true")"
-job_id="$(python3 - <<'PY' "$start_json"
+start_tmp="$(mktemp)"
+start_code="$(curl -sS -o "$start_tmp" -w "%{http_code}" -X POST "${AUTH[@]}" "${BASE}/sync/from-portal?async=true")"
+
+if [ "$start_code" = "202" ]; then
+  job_id="$(python3 - <<'PY' "$(cat "$start_tmp")"
 import json, sys
 print(json.loads(sys.argv[1])["job_id"])
 PY
 )"
+  echo "Started sync job ${job_id}"
+elif [ "$start_code" = "409" ]; then
+  echo "Sync already in progress, attaching to current job ..."
+  job_id="$(curl -fsS "${AUTH[@]}" "${BASE}/sync/jobs/current" | python3 - <<'PY'
+import json, sys
+print(json.load(sys.stdin)["job_id"])
+PY
+)"
+  echo "Polling job ${job_id}"
+else
+  echo "curl: HTTP ${start_code}" >&2
+  cat "$start_tmp" >&2
+  rm -f "$start_tmp"
+  exit 1
+fi
+rm -f "$start_tmp"
 
-echo "Started sync job ${job_id}"
 poll_job "$job_id"
 echo
 git pull --ff-only
