@@ -1,0 +1,27 @@
+[project]
+name = "lore-bridge"
+version = "0.6.0"
+description = "Obsidian Portal ↔ GitHub lore sync bridge"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi==0.115.6",
+    "uvicorn[standard]==0.34.0",
+    "requests==2.32.3",
+    "requests-oauthlib==2.0.0",
+    "python-dotenv==1.0.1",
+    "beautifulsoup4==4.12.3",
+    "rapidfuzz==3.11.0",
+    "PyYAML==6.0.2",
+    "typer>=0.15.0",
+]
+
+[project.scripts]
+lore-bridge = "lore_bridge.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/lore_bridge"]

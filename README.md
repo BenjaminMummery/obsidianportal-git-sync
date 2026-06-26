@@ -259,7 +259,7 @@ Deploy **this repo** to Render (or similar).
 
 | Setting | Value |
 |---------|--------|
-| Build command | `pip install -r requirements.txt` |
+| Build command | `pip install .` (or `pip install -r requirements.txt` for a flat install without the CLI) |
 | Start command | `uvicorn app:app --host 0.0.0.0 --port $PORT` |
 
 Copy **all** relevant variables from `.env` into the host’s environment settings. At minimum:
@@ -445,6 +445,25 @@ set -a && source .env && set +a
 /path/to/obsidianportal-git-sync/scripts/lore_pull.sh
 ```
 
+Or install the bridge as a CLI dependency with [uv](https://docs.astral.sh/uv/):
+
+```toml
+# pyproject.toml in your lore repo
+[project]
+dependencies = [
+  "lore-bridge @ git+https://github.com/YOUR_OWNER/obsidianportal-git-sync.git@feat/cli-package",
+]
+```
+
+```bash
+set -a && source .env && set +a
+uv run lore-bridge pull      # portal → GitHub, then git pull --ff-only
+uv run lore-bridge publish   # pull + publish safe changes to portal
+uv run lore-bridge status    # health + last sync timestamps
+```
+
+From a bridge repo checkout you can also run `uv run lore-bridge serve` for local API development.
+
 That starts an async sync, prints progress every 2 seconds, then runs `git pull --ff-only` when complete.
 
 ---
@@ -606,7 +625,7 @@ Large first syncs still require many Obsidian Portal and GitHub blob API calls, 
 
 | Check | Expected |
 |-------|----------|
-| Build command | `pip install -r requirements.txt` |
+| Build command | `pip install .` (or `pip install -r requirements.txt` for a flat install without the CLI) |
 | Start command | `uvicorn app:app --host 0.0.0.0 --port $PORT` |
 | Python version | 3.11+ |
 
