@@ -290,19 +290,24 @@ CACHE_TTL_SECONDS=900
 
 **Never commit `.env` to git.**
 
-Verify deployment:
+Verify deployment (open in a browser, or use curl):
 
 ```bash
-set -a && source .env && set +a
+# Browser-friendly status page
+open "${LORE_BRIDGE_URL}/"
 
+# JSON status (public — no token required)
+curl -sS "${LORE_BRIDGE_URL}/health"
+
+# With token — includes in-memory cache timestamps
 curl -sS -H "Authorization: Bearer ${LORE_BRIDGE_API_KEY}" \
   "${LORE_BRIDGE_URL}/health"
 ```
 
-Expected:
+Expected (public JSON):
 
 ```json
-{"ok":true,"campaign_id_configured":true,"github_configured":true,"branch":"main",...}
+{"ok":true,"service":"Sindrel Lore Bridge","version":"0.4.1","campaign_id_configured":true,"github_configured":true,...}
 ```
 
 ### Step 8 — First sync (portal → GitHub)
@@ -445,23 +450,18 @@ That runs `POST /sync/from-portal` then `git pull --ff-only`.
 
 ## Troubleshooting
 
-### `/health` returns 401
+### `/health` returns errors or looks wrong
 
-You did not pass the API key, or it does not match Render’s `LORE_BRIDGE_API_KEY`.
+**Public access:** `/` and `/health` work in a browser without a token and show a status page (HTML) or JSON with `ok`, version, and configuration flags.
+
+**With token:** pass `Authorization: Bearer ${LORE_BRIDGE_API_KEY}` to `/health` for extra fields like `last_sync`.
 
 ```bash
+curl -sS "${LORE_BRIDGE_URL}/health"
 curl -H "Authorization: Bearer ${LORE_BRIDGE_API_KEY}" "${LORE_BRIDGE_URL}/health"
 ```
 
-Load from `.env` first:
-
-```bash
-set -a && source .env && set +a
-```
-
-### `/health` returns 500 about missing configuration
-
-Check Render env vars. Common misses: `LORE_BRIDGE_API_KEY`, `OP_CAMPAIGN_ID`, or GitHub vars.
+If `campaign_id_configured` or `github_configured` is `false`, check Render env vars. Common misses: `OP_CAMPAIGN_ID`, `GITHUB_TOKEN`, `GITHUB_OWNER`, or `GITHUB_REPO`.
 
 ### Sync appears to do nothing
 

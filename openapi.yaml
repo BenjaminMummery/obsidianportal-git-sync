@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Sindrel Lore Bridge
-  version: 0.4.0
+  version: 0.4.1
   description: Live lore retrieval and Git-backed sync bridge for an Obsidian Portal campaign wiki and characters.
 servers:
   - url: https://YOUR_DEPLOYED_DOMAIN_HERE
@@ -13,10 +13,18 @@ components:
 security:
   - bearerAuth: []
 paths:
+  /:
+    get:
+      operationId: root
+      summary: Human-friendly status page (HTML in browsers, JSON otherwise).
+      security: []
+      responses:
+        '200': { description: OK }
   /health:
     get:
       operationId: health
-      summary: Check whether the bridge is configured and alive.
+      summary: Public bridge status. Pass Bearer token for extra cache details.
+      security: []
       responses:
         '200': { description: OK }
   /search_lore:

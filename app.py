@@ -14,6 +14,7 @@ import yaml
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
+from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel
 from rapidfuzz import fuzz
 from requests_oauthlib import OAuth1
@@ -926,15 +927,88 @@ def publish_git_to_portal_impl(force_portal_pull: bool = True) -> PublishResult:
 
 # ----------------------------- API routes -----------------------------
 
-@app.get("/health", dependencies=[Depends(require_auth)])
-def health() -> dict[str, Any]:
-    return {
+def health_payload(*, authenticated: bool) -> dict[str, Any]:
+    payload: dict[str, Any] = {
         "ok": True,
+        "service": app.title,
+        "version": app.version,
         "campaign_id_configured": bool(CAMPAIGN_ID),
         "github_configured": bool(GITHUB_TOKEN and GITHUB_OWNER and GITHUB_REPO),
         "branch": GITHUB_BRANCH,
-        "last_sync": _cache["last_sync"],
+        "message": "Bridge is running. Sync and lore API endpoints require Authorization: Bearer <LORE_BRIDGE_API_KEY>.",
     }
+    if authenticated:
+        payload["last_sync"] = _cache["last_sync"]
+        payload["wiki_index_cached"] = bool(_cache["index"])
+        payload["characters_index_cached"] = bool(_cache["characters_index"])
+    return payload
+
+
+def status_html(payload: dict[str, Any]) -> str:
+    def row(label: str, ok: bool) -> str:
+        mark = "✓" if ok else "✗"
+        css = "ok" if ok else "bad"
+        return f'<tr><td>{label}</td><td class="{css}">{mark}</td></tr>'
+
+    extra = ""
+    if "last_sync" in payload:
+        extra = f'<p class="meta">In-memory index last refreshed: {payload["last_sync"] or "not yet"}</p>'
+
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{payload["service"]}</title>
+  <style>
+    body {{ font-family: system-ui, sans-serif; max-width: 42rem; margin: 2rem auto; padding: 0 1rem; line-height: 1.5; color: #1a1a1a; }}
+    h1 {{ font-size: 1.5rem; margin-bottom: 0.25rem; }}
+    .badge {{ display: inline-block; background: #e6f4ea; color: #137333; padding: 0.2rem 0.6rem; border-radius: 999px; font-size: 0.875rem; }}
+    table {{ border-collapse: collapse; margin: 1.25rem 0; width: 100%; }}
+    td {{ padding: 0.35rem 0; border-bottom: 1px solid #eee; }}
+    td:last-child {{ text-align: right; font-weight: 600; }}
+    .ok {{ color: #137333; }} .bad {{ color: #c5221f; }}
+    .meta, .note {{ color: #555; font-size: 0.925rem; }}
+    a {{ color: #1558d6; }}
+    code {{ background: #f4f4f4; padding: 0.1rem 0.35rem; border-radius: 3px; }}
+  </style>
+</head>
+<body>
+  <p class="badge">Running</p>
+  <h1>{payload["service"]}</h1>
+  <p>Obsidian Portal ↔ GitHub lore sync bridge (v{payload["version"]}).</p>
+  <p>{payload["message"]}</p>
+  <table>
+    {row("Obsidian Portal campaign configured", payload["campaign_id_configured"])}
+    {row("GitHub lore repo configured", payload["github_configured"])}
+  </table>
+  <p class="meta">Git branch: <code>{payload["branch"]}</code></p>
+  {extra}
+  <p class="note">API docs: <a href="/docs">/docs</a> · JSON status: <a href="/health">/health</a></p>
+</body>
+</html>"""
+
+
+def wants_html(request: Request) -> bool:
+    accept = request.headers.get("accept", "")
+    return "text/html" in accept and "application/json" not in accept
+
+
+@app.get("/", response_class=HTMLResponse)
+def root(request: Request) -> HTMLResponse | JSONResponse:
+    payload = health_payload(authenticated=False)
+    if wants_html(request):
+        return HTMLResponse(status_html(payload))
+    return JSONResponse(payload)
+
+
+@app.get("/health")
+def health(request: Request, authorization: str | None = Header(default=None)) -> HTMLResponse | JSONResponse:
+    authenticated = bool(BRIDGE_KEY and authorization == f"Bearer {BRIDGE_KEY}")
+    payload = health_payload(authenticated=authenticated)
+    if wants_html(request):
+        return HTMLResponse(status_html(payload))
+    return JSONResponse(payload)
 
 
 @app.post("/sync", response_model=SyncResult, dependencies=[Depends(require_auth)])
