@@ -1,8 +1,8 @@
 openapi: 3.1.0
 info:
   title: Sindrel Lore Bridge
-  version: 0.3.0
-  description: Live lore retrieval and Git-backed sync bridge for an Obsidian Portal campaign wiki.
+  version: 0.4.0
+  description: Live lore retrieval and Git-backed sync bridge for an Obsidian Portal campaign wiki and characters.
 servers:
   - url: https://YOUR_DEPLOYED_DOMAIN_HERE
 components:
@@ -63,19 +63,19 @@ paths:
   /sync/from-portal:
     post:
       operationId: syncFromPortal
-      summary: Pull latest Obsidian Portal wiki pages into the configured GitHub repo.
+      summary: Pull latest Obsidian Portal wiki pages and characters into the configured GitHub repo.
       responses:
         '200': { description: Sync result }
   /sync/publish-main:
     post:
       operationId: publishMain
-      summary: Pull Obsidian Portal first, then publish changed markdown files from GitHub main back to Obsidian Portal.
+      summary: Pull Obsidian Portal first, then publish changed Textile files from GitHub main back to Obsidian Portal wiki pages and characters.
       responses:
         '200': { description: Publish result }
   /diff/repo-vs-portal:
     get:
       operationId: diffRepoVsPortal
-      summary: Show a unified diff between a repo markdown file and its current Obsidian Portal page.
+      summary: Show a unified diff between a repo Textile file and its current Obsidian Portal page.
       parameters:
         - name: path
           in: query
