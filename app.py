@@ -57,7 +57,7 @@ ALLOW_DELETE_FROM_GIT = os.environ.get("ALLOW_DELETE_FROM_GIT", "false").lower()
 
 app = FastAPI(
     title="Sindrel Lore Bridge",
-    version="0.6.0",
+    version="0.6.1",
     description="Bidirectional Obsidian Portal ↔ GitHub lore sync bridge with pull-through conflict protection.",
 )
 
@@ -730,7 +730,7 @@ def page_to_markdown(page: dict[str, Any]) -> tuple[str, dict[str, Any]]:
     front = yaml.safe_dump(fm, sort_keys=False, allow_unicode=True).strip()
     body = page.get("body") or ""
     gm = page.get("game_master_info") or ""
-    content = f"---\n{front}\n---\n\n{body.rstrip()}\n"
+    content = normalize_textile_content(f"---\n{front}\n---\n\n{body.rstrip()}\n")
     if gm:
         content += f"\n<!-- GM_INFO_START -->\n{gm.rstrip()}\n<!-- GM_INFO_END -->\n"
     return content, fm
@@ -763,7 +763,9 @@ def character_to_markdown(character: dict[str, Any]) -> tuple[str, dict[str, Any
     description = (character.get("description") or "").rstrip()
     bio = (character.get("bio") or "").rstrip()
     gm = (character.get("game_master_info") or "").rstrip()
-    content = f"---\n{front}\n---\n\n<!-- OP_DESCRIPTION -->\n{description}\n\n<!-- OP_BIO -->\n{bio}\n"
+    content = normalize_textile_content(
+        f"---\n{front}\n---\n\n<!-- OP_DESCRIPTION -->\n{description}\n\n<!-- OP_BIO -->\n{bio}\n"
+    )
     if gm:
         content += f"\n<!-- GM_INFO_START -->\n{gm}\n<!-- GM_INFO_END -->\n"
     return content, fm
@@ -774,14 +776,23 @@ def parse_markdown(content: str) -> tuple[dict[str, Any], str, str]:
     return parsed["fm"], parsed["body"], parsed["gm_info"]
 
 
+def normalize_textile_content(content: str) -> str:
+    return content.replace("\r\n", "\n").replace("\r", "\n")
+
+
 def parse_sync_file(content: str) -> dict[str, Any]:
+    content = normalize_textile_content(content)
     if not content.startswith("---\n"):
         return {"fm": {}, "body": content, "description": "", "bio": "", "gm_info": "", "kind": "Wiki"}
-    end = content.find("\n---", 4)
+    end = content.find("\n---\n", 4)
     if end == -1:
-        return {"fm": {}, "body": content, "description": "", "bio": "", "gm_info": "", "kind": "Wiki"}
+        end = content.find("\n---", 4)
+        if end == -1:
+            return {"fm": {}, "body": content, "description": "", "bio": "", "gm_info": "", "kind": "Wiki"}
     front = content[4:end]
     rest = content[end + 4 :].lstrip("\n")
+    if rest.startswith("---\n"):
+        rest = rest[4:].lstrip("\n")
     fm = yaml.safe_load(front) or {}
     kind = resource_kind(fm)
     gm_info = ""
@@ -861,13 +872,10 @@ def portal_index_unchanged(
     repo_blobs: dict[str, str],
     is_character: bool,
 ) -> bool:
-    path = meta_repo_path(meta, is_character=is_character)
-    return (
-        bool(known)
-        and known.get("op_updated_at") == meta.get("updated_at")
-        and known.get("repo_path") == path
-        and path in repo_blobs
-    )
+    if not known or known.get("op_updated_at") != meta.get("updated_at"):
+        return False
+    path = known.get("repo_path") or meta_repo_path(meta, is_character=is_character)
+    return bool(path and path in repo_blobs)
 
 
 def sync_pages_state_entry(
@@ -1106,6 +1114,14 @@ def publish_git_to_portal_impl(force_portal_pull: bool = True, progress: Progres
                 if not ALLOW_CREATE_FROM_GIT:
                     skipped += 1
                     continue
+                if re.search(r"^op_id:\s", body, re.MULTILINE):
+                    raise HTTPException(
+                        status_code=409,
+                        detail=(
+                            f"{path} looks like an existing synced page but frontmatter was not parsed "
+                            "(often CRLF line endings). Fix the file and retry."
+                        ),
+                    )
                 progress.phase("publishing_portal", current=i, total=publish_total, path=path, title=title)
                 if kind == "Character":
                     pushed = create_op_character(fm, description, bio, gm_info)
