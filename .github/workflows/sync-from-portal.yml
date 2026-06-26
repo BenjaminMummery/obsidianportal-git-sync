@@ -1,0 +1,14 @@
+name: Sync from Obsidian Portal
+
+on:
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger bridge pull-through sync
+        run: |
+          curl -fsS -X POST \
+            -H "Authorization: Bearer ${{ secrets.LORE_BRIDGE_API_KEY }}" \
+            "${{ secrets.LORE_BRIDGE_URL }}/sync/from-portal"

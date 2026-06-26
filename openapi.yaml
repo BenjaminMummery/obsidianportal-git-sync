@@ -1,0 +1,85 @@
+openapi: 3.1.0
+info:
+  title: Sindrel Lore Bridge
+  version: 0.3.0
+  description: Live lore retrieval and Git-backed sync bridge for an Obsidian Portal campaign wiki.
+servers:
+  - url: https://YOUR_DEPLOYED_DOMAIN_HERE
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+security:
+  - bearerAuth: []
+paths:
+  /health:
+    get:
+      operationId: health
+      summary: Check whether the bridge is configured and alive.
+      responses:
+        '200': { description: OK }
+  /search_lore:
+    get:
+      operationId: searchLore
+      summary: Search live Obsidian Portal lore metadata, optionally full text.
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema: { type: string }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, default: 8, minimum: 1, maximum: 20 }
+        - name: include_full_text
+          in: query
+          required: false
+          schema: { type: boolean, default: false }
+      responses:
+        '200': { description: Search results }
+  /get_page:
+    get:
+      operationId: getPage
+      summary: Fetch one Obsidian Portal wiki page by UUID or slug.
+      parameters:
+        - name: id_or_slug
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Page }
+  /recent_changes:
+    get:
+      operationId: recentChanges
+      summary: Return recently changed Obsidian Portal wiki pages.
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, default: 10, minimum: 1, maximum: 30 }
+      responses:
+        '200': { description: Recent pages }
+  /sync/from-portal:
+    post:
+      operationId: syncFromPortal
+      summary: Pull latest Obsidian Portal wiki pages into the configured GitHub repo.
+      responses:
+        '200': { description: Sync result }
+  /sync/publish-main:
+    post:
+      operationId: publishMain
+      summary: Pull Obsidian Portal first, then publish changed markdown files from GitHub main back to Obsidian Portal.
+      responses:
+        '200': { description: Publish result }
+  /diff/repo-vs-portal:
+    get:
+      operationId: diffRepoVsPortal
+      summary: Show a unified diff between a repo markdown file and its current Obsidian Portal page.
+      parameters:
+        - name: path
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Diff }

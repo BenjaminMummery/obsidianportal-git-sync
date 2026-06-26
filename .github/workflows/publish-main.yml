@@ -1,0 +1,14 @@
+name: Publish main to Obsidian Portal
+
+on:
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pull portal first, then publish main
+        run: |
+          curl -fsS -X POST \
+            -H "Authorization: Bearer ${{ secrets.LORE_BRIDGE_API_KEY }}" \
+            "${{ secrets.LORE_BRIDGE_URL }}/sync/publish-main"
