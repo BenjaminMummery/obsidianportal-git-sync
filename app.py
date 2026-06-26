@@ -57,7 +57,7 @@ ALLOW_DELETE_FROM_GIT = os.environ.get("ALLOW_DELETE_FROM_GIT", "false").lower()
 
 app = FastAPI(
     title="Sindrel Lore Bridge",
-    version="0.5.1",
+    version="0.5.2",
     description="Bidirectional Obsidian Portal ↔ GitHub lore sync bridge with pull-through conflict protection.",
 )
 
@@ -73,6 +73,20 @@ _author_id_cache: str | None = None
 _jobs: dict[str, "SyncJobRecord"] = {}
 _active_job_id: str | None = None
 _job_lock = threading.Lock()
+_sync_status_cache: dict[str, Any] = {"last_portal_pull": None, "last_git_publish": None, "fetched_at": 0.0}
+SYNC_STATUS_CACHE_TTL = 60
+
+PHASE_LABELS = {
+    "starting": "Starting",
+    "indexing": "Loading indexes",
+    "fetching_wiki": "Pulling wiki pages",
+    "fetching_characters": "Pulling characters",
+    "committing_git": "Committing to GitHub",
+    "publishing_portal": "Publishing to Obsidian Portal",
+    "deleting_portal": "Removing deleted pages",
+    "done": "Finishing",
+}
+JOB_KIND_LABELS = {"from-portal": "Portal → GitHub", "publish-main": "GitHub → Portal"}
 
 
 class JobError(BaseModel):
@@ -919,6 +933,7 @@ def sync_from_portal_impl(progress: ProgressReporter | None = None) -> SyncResul
             progress=progress,
         )
     progress.phase("done", message=f"changed {changed} record(s)")
+    update_sync_status_cache(state)
     return SyncResult(changed_pages=changed, committed=bool(commit_sha), commit_sha=commit_sha, message="Pulled Obsidian Portal into GitHub")
 
 
@@ -1050,6 +1065,7 @@ def publish_git_to_portal_impl(force_portal_pull: bool = True, progress: Progres
             message += f" ({', '.join(parts)})"
         gh_commit_changes(message, git_changes, progress=progress)
 
+    update_sync_status_cache(state)
     progress.phase("done", message=f"created={created} updated={updated} skipped={skipped} conflicts={len(conflicts)}")
     return PublishResult(
         portal_pull=portal_pull,
@@ -1065,6 +1081,46 @@ def publish_git_to_portal_impl(force_portal_pull: bool = True, progress: Progres
 
 # ----------------------------- sync jobs -----------------------------
 
+def update_sync_status_cache(state: dict[str, Any]) -> None:
+    _sync_status_cache["last_portal_pull"] = state.get("last_portal_pull")
+    _sync_status_cache["last_git_publish"] = state.get("last_git_publish")
+    _sync_status_cache["fetched_at"] = time.time()
+
+
+def refresh_sync_status_cache(*, force: bool = False) -> dict[str, Any]:
+    now = time.time()
+    if not force and now - float(_sync_status_cache.get("fetched_at") or 0) < SYNC_STATUS_CACHE_TTL:
+        return _sync_status_cache
+    if not (GITHUB_TOKEN and GITHUB_OWNER and GITHUB_REPO):
+        return _sync_status_cache
+    try:
+        state = load_state()
+        update_sync_status_cache(state)
+    except HTTPException:
+        pass
+    return _sync_status_cache
+
+
+def job_public_snapshot(job: SyncJobRecord) -> dict[str, Any]:
+    percent = round(job.current / job.total * 100) if job.total else None
+    detail = job.current_title or job.current_path
+    return {
+        "job_id": job.job_id,
+        "kind": job.kind,
+        "kind_label": JOB_KIND_LABELS.get(job.kind, job.kind),
+        "status": job.status,
+        "phase": job.phase,
+        "phase_label": PHASE_LABELS.get(job.phase, job.phase.replace("_", " ").title()),
+        "current": job.current,
+        "total": job.total,
+        "percent": percent,
+        "message": job.message,
+        "detail": detail,
+        "started_at": job.started_at,
+        "finished_at": job.finished_at,
+    }
+
+
 def _running_job_unlocked() -> SyncJobRecord | None:
     if _active_job_id and _active_job_id in _jobs:
         job = _jobs[_active_job_id]
@@ -1079,6 +1135,20 @@ def active_job() -> SyncJobRecord | None:
 
 
 def start_sync_job(kind: str, runner: Callable[[ProgressReporter], Any]) -> str:
+    job_id, job = _begin_sync_job(kind)
+
+    def execute() -> None:
+        try:
+            _execute_sync_job(job_id, job, runner)
+        except Exception:
+            pass
+
+    threading.Thread(target=execute, daemon=True).start()
+    logger.info("sync job %s started (%s)", job_id, kind)
+    return job_id
+
+
+def _begin_sync_job(kind: str) -> tuple[str, SyncJobRecord]:
     with _job_lock:
         current = _running_job_unlocked()
         if current:
@@ -1091,35 +1161,45 @@ def start_sync_job(kind: str, runner: Callable[[ProgressReporter], Any]) -> str:
         _jobs[job_id] = job
         global _active_job_id
         _active_job_id = job_id
+    return job_id, job
 
-    def execute() -> None:
-        progress = ProgressReporter(job)
-        try:
-            result = runner(progress)
-            job.status = "completed"
-            job.result = result.model_dump() if hasattr(result, "model_dump") else result
-            job.message = getattr(result, "message", None) or "Completed"
-            logger.info("sync job %s completed (%s)", job_id, kind)
-        except Exception as exc:
-            job.status = "failed"
-            if isinstance(exc, HTTPException):
-                detail = str(exc.detail)
-            else:
-                detail = str(exc)
-            job.message = detail[:500]
-            if not job.errors:
-                job.errors.append(JobError(phase=job.phase, detail=detail))
-            logger.exception("sync job %s failed (%s)", job_id, kind)
-        finally:
-            job.finished_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-            with _job_lock:
-                global _active_job_id
-                if _active_job_id == job_id:
-                    _active_job_id = None
 
-    threading.Thread(target=execute, daemon=True).start()
-    logger.info("sync job %s started (%s)", job_id, kind)
-    return job_id
+def _finish_sync_job(job_id: str) -> None:
+    with _job_lock:
+        global _active_job_id
+        if _active_job_id == job_id:
+            _active_job_id = None
+
+
+def _execute_sync_job(job_id: str, job: SyncJobRecord, runner: Callable[[ProgressReporter], Any]) -> Any:
+    progress = ProgressReporter(job)
+    try:
+        result = runner(progress)
+        job.status = "completed"
+        job.result = result.model_dump() if hasattr(result, "model_dump") else result
+        job.message = getattr(result, "message", None) or "Completed"
+        logger.info("sync job %s completed (%s)", job_id, job.kind)
+        return result
+    except Exception as exc:
+        job.status = "failed"
+        if isinstance(exc, HTTPException):
+            detail = str(exc.detail)
+        else:
+            detail = str(exc)
+        job.message = detail[:500]
+        if not job.errors:
+            job.errors.append(JobError(phase=job.phase, detail=detail))
+        logger.exception("sync job %s failed (%s)", job_id, job.kind)
+        raise
+    finally:
+        job.finished_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        _finish_sync_job(job_id)
+
+
+def run_sync_job_blocking(kind: str, runner: Callable[[ProgressReporter], Any]) -> Any:
+    job_id, job = _begin_sync_job(kind)
+    logger.info("sync job %s started (%s, blocking)", job_id, kind)
+    return _execute_sync_job(job_id, job, runner)
 
 
 def get_sync_job(job_id: str) -> SyncJobRecord:

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Sindrel Lore Bridge
-  version: 0.5.1
+  version: 0.5.2
   description: Live lore retrieval and Git-backed sync bridge for an Obsidian Portal campaign wiki and characters.
 servers:
   - url: https://YOUR_DEPLOYED_DOMAIN_HERE

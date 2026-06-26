@@ -11,6 +11,7 @@ poll_job() {
   local job_id="$1"
   while true; do
     status_json="$(curl -fsS "${AUTH[@]}" "${BASE}/sync/jobs/${job_id}")"
+    set +e
     python3 - <<'PY' "$status_json"
 import json, sys
 job = json.loads(sys.argv[1])
@@ -30,6 +31,7 @@ if job["status"] == "failed":
 sys.exit(2)
 PY
     code=$?
+    set -e
     if [ "$code" -eq 0 ]; then
       return 0
     fi

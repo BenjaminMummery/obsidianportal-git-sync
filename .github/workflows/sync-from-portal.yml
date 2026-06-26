@@ -21,6 +21,7 @@ jobs:
           echo "Started job ${job_id}"
           while true; do
             job="$(curl -fsS -H "$AUTH" "${BASE%/}/sync/jobs/${job_id}")"
+            set +e
             python3 - <<'PY' "$job"
           import json, sys
           job = json.loads(sys.argv[1])
@@ -33,6 +34,7 @@ jobs:
           sys.exit(2)
           PY
             code=$?
+            set -e
             if [ "$code" -eq 0 ]; then break; fi
             if [ "$code" -eq 1 ]; then exit 1; fi
             sleep 5
