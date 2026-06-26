@@ -40,6 +40,8 @@ PY
   done
 }
 
+echo "Starting async sync at ${BASE}/sync/from-portal ..."
+
 start_json="$(curl -fsS -X POST "${AUTH[@]}" "${BASE}/sync/from-portal?async=true")"
 job_id="$(python3 - <<'PY' "$start_json"
 import json, sys

@@ -57,7 +57,7 @@ ALLOW_DELETE_FROM_GIT = os.environ.get("ALLOW_DELETE_FROM_GIT", "false").lower()
 
 app = FastAPI(
     title="Sindrel Lore Bridge",
-    version="0.5.0",
+    version="0.5.1",
     description="Bidirectional Obsidian Portal ↔ GitHub lore sync bridge with pull-through conflict protection.",
 )
 
@@ -1065,18 +1065,22 @@ def publish_git_to_portal_impl(force_portal_pull: bool = True, progress: Progres
 
 # ----------------------------- sync jobs -----------------------------
 
+def _running_job_unlocked() -> SyncJobRecord | None:
+    if _active_job_id and _active_job_id in _jobs:
+        job = _jobs[_active_job_id]
+        if job.status == "running":
+            return job
+    return None
+
+
 def active_job() -> SyncJobRecord | None:
     with _job_lock:
-        if _active_job_id and _active_job_id in _jobs:
-            job = _jobs[_active_job_id]
-            if job.status == "running":
-                return job
-    return None
+        return _running_job_unlocked()
 
 
 def start_sync_job(kind: str, runner: Callable[[ProgressReporter], Any]) -> str:
     with _job_lock:
-        current = active_job()
+        current = _running_job_unlocked()
         if current:
             raise HTTPException(
                 status_code=409,
