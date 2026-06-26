@@ -56,9 +56,17 @@ PY
   echo "Started sync job ${job_id}"
 elif [ "$start_code" = "409" ]; then
   echo "Sync already in progress, attaching to current job ..."
-  job_id="$(curl -fsS "${AUTH[@]}" "${BASE}/sync/jobs/current" | python3 - <<'PY'
+  set +e
+  current_json="$(curl -fsS "${AUTH[@]}" "${BASE}/sync/jobs/current")"
+  current_code=$?
+  set -e
+  if [ "$current_code" -ne 0 ]; then
+    echo "No active job found (it may have just finished). Try: git pull --ff-only" >&2
+    exit 1
+  fi
+  job_id="$(python3 - <<'PY' "$current_json"
 import json, sys
-print(json.load(sys.stdin)["job_id"])
+print(json.loads(sys.argv[1])["job_id"])
 PY
 )"
   echo "Polling job ${job_id}"
