@@ -57,7 +57,7 @@ ALLOW_DELETE_FROM_GIT = os.environ.get("ALLOW_DELETE_FROM_GIT", "false").lower()
 
 app = FastAPI(
     title="Sindrel Lore Bridge",
-    version="0.5.3",
+    version="0.6.0",
     description="Bidirectional Obsidian Portal ↔ GitHub lore sync bridge with pull-through conflict protection.",
 )
 
@@ -607,12 +607,22 @@ def gh_list_tree() -> list[dict[str, Any]]:
     return tree.get("tree") or []
 
 
-def gh_sync_files() -> list[str]:
+def gh_repo_blob_index(tree: list[dict[str, Any]] | None = None) -> dict[str, str]:
+    items = tree if tree is not None else gh_list_tree()
+    return {
+        item["path"]: item["sha"]
+        for item in items
+        if item.get("type") == "blob" and item.get("path") and item.get("sha")
+    }
+
+
+def gh_sync_files(tree: list[dict[str, Any]] | None = None) -> list[str]:
     prefixes = [f"{LORE_WIKI_DIR}/", f"{LORE_CHARACTERS_DIR}/"]
     allowed_exts = {LORE_FILE_EXT, LEGACY_FILE_EXT}
+    items = tree if tree is not None else gh_list_tree()
     return [
         item["path"]
-        for item in gh_list_tree()
+        for item in items
         if item.get("type") == "blob"
         and any(item.get("path", "").startswith(prefix) for prefix in prefixes)
         and any(item["path"].endswith(ext) for ext in allowed_exts)
@@ -838,18 +848,72 @@ def portal_record_hash(record: dict[str, Any], fm: dict[str, Any]) -> str:
     return content_hash(fm, body=record.get("body") or "", gm_info=record.get("game_master_info") or "")
 
 
+def meta_repo_path(meta: dict[str, Any], *, is_character: bool) -> str:
+    if is_character:
+        return page_path({**meta, "op_kind": "Character"})
+    return page_path(meta)
+
+
+def portal_index_unchanged(
+    meta: dict[str, Any],
+    known: dict[str, Any],
+    *,
+    repo_blobs: dict[str, str],
+    is_character: bool,
+) -> bool:
+    path = meta_repo_path(meta, is_character=is_character)
+    return (
+        bool(known)
+        and known.get("op_updated_at") == meta.get("updated_at")
+        and known.get("repo_path") == path
+        and path in repo_blobs
+    )
+
+
+def sync_pages_state_entry(
+    pages_state: dict[str, Any],
+    record_id: str,
+    *,
+    path: str,
+    record: dict[str, Any],
+    repo_hash: str,
+    repo_blobs: dict[str, str],
+) -> None:
+    pages_state[record_id] = {
+        "repo_path": path,
+        "op_id": record_id,
+        "op_kind": record.get("op_kind") or "Wiki",
+        "op_slug": record.get("slug"),
+        "op_updated_at": record.get("updated_at"),
+        "repo_hash_at_sync": repo_hash,
+        "repo_blob_sha": repo_blobs.get(path),
+        "last_synced_title": record.get("title"),
+    }
+
+
+def refresh_pages_state_blob_shas(pages_state: dict[str, Any], repo_blobs: dict[str, str]) -> None:
+    for entry in pages_state.values():
+        path = entry.get("repo_path")
+        if path and path in repo_blobs:
+            entry["repo_blob_sha"] = repo_blobs[path]
+
+
 def sync_resource_from_portal(
     meta: dict[str, Any],
     *,
     fetch_record,
     pages_state: dict[str, Any],
+    repo_blobs: dict[str, str],
+    is_character: bool = False,
     progress: ProgressReporter | None = None,
-) -> tuple[int, list[TreeChange]]:
+) -> tuple[int, list[TreeChange], int]:
     record_id = meta.get("id")
     if not record_id:
-        return 0, []
+        return 0, [], 0
     title = page_title(meta)
     known = pages_state.get(record_id, {})
+    if portal_index_unchanged(meta, known, repo_blobs=repo_blobs, is_character=is_character):
+        return 0, [], 1
     try:
         record = fetch_record(record_id, force=True)
     except HTTPException as exc:
@@ -863,14 +927,8 @@ def sync_resource_from_portal(
     content, fm = page_to_markdown(record)
     path = page_path(record)
     legacy_path = known.get("repo_path")
-    if (
-        known.get("op_updated_at") == meta.get("updated_at")
-        and legacy_path == path
-        and gh_get_file(path)
-    ):
-        return 0, []
-    old_file = gh_get_file(path)
-    if not old_file and legacy_path and legacy_path != path:
+    old_file = gh_get_file(path) if path in repo_blobs else None
+    if not old_file and legacy_path and legacy_path != path and legacy_path in repo_blobs:
         old_file = gh_get_file(legacy_path)
     repo_hash = portal_record_hash(record, fm)
     changes: list[TreeChange] = []
@@ -878,18 +936,17 @@ def sync_resource_from_portal(
     if not old_file or old_file.content != content or legacy_path != path:
         changes.append(TreeChange(path, content))
         changed = 1
-        if legacy_path and legacy_path != path and gh_get_file(legacy_path):
+        if legacy_path and legacy_path != path and legacy_path in repo_blobs:
             changes.append(TreeChange(legacy_path, None))
-    pages_state[record_id] = {
-        "repo_path": path,
-        "op_id": record_id,
-        "op_kind": record.get("op_kind") or "Wiki",
-        "op_slug": record.get("slug"),
-        "op_updated_at": record.get("updated_at"),
-        "repo_hash_at_sync": repo_hash,
-        "last_synced_title": record.get("title"),
-    }
-    return changed, changes
+    sync_pages_state_entry(
+        pages_state,
+        record_id,
+        path=path,
+        record=record,
+        repo_hash=repo_hash,
+        repo_blobs=repo_blobs,
+    )
+    return changed, changes, 0
 
 
 def sync_from_portal_impl(progress: ProgressReporter | None = None) -> SyncResult:
@@ -903,27 +960,43 @@ def sync_from_portal_impl(progress: ProgressReporter | None = None) -> SyncResul
     logger.info("indexed %d wiki records and %d characters", wiki_total, char_total)
     state = load_state()
     changed = 0
+    skipped = 0
     changes: list[TreeChange] = []
     pages_state = state.setdefault("pages", {})
+    progress.phase("indexing", message="loading GitHub tree")
+    repo_tree = gh_list_tree()
+    repo_blobs = gh_repo_blob_index(repo_tree)
 
     for i, meta in enumerate(_cache["index"], start=1):
         progress.phase("fetching_wiki", current=i, total=wiki_total, title=page_title(meta))
-        item_changed, item_changes = sync_resource_from_portal(
-            meta, fetch_record=fetch_page, pages_state=pages_state, progress=progress,
+        item_changed, item_changes, item_skipped = sync_resource_from_portal(
+            meta,
+            fetch_record=fetch_page,
+            pages_state=pages_state,
+            repo_blobs=repo_blobs,
+            progress=progress,
         )
         changed += item_changed
+        skipped += item_skipped
         changes.extend(item_changes)
 
     for i, meta in enumerate(_cache["characters_index"], start=1):
         progress.phase("fetching_characters", current=i, total=char_total, title=page_title(meta))
-        item_changed, item_changes = sync_resource_from_portal(
-            meta, fetch_record=fetch_character, pages_state=pages_state, progress=progress,
+        item_changed, item_changes, item_skipped = sync_resource_from_portal(
+            meta,
+            fetch_record=fetch_character,
+            pages_state=pages_state,
+            repo_blobs=repo_blobs,
+            is_character=True,
+            progress=progress,
         )
         changed += item_changed
+        skipped += item_skipped
         changes.extend(item_changes)
 
     commit_sha = None
-    if changed > 0 or gh_get_file(LORE_STATE_PATH) is None:
+    state_exists = LORE_STATE_PATH in repo_blobs
+    if changed > 0 or not state_exists:
         state["last_portal_pull"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         changes.append(TreeChange(LORE_STATE_PATH, state_content(state)))
         commit_sha = gh_commit_changes(
@@ -931,7 +1004,17 @@ def sync_from_portal_impl(progress: ProgressReporter | None = None) -> SyncResul
             changes,
             progress=progress,
         )
-    progress.phase("done", message=f"changed {changed} record(s)")
+        if commit_sha and changed > 0:
+            refresh_pages_state_blob_shas(pages_state, gh_repo_blob_index())
+            follow_up = gh_commit_changes(
+                "Sync from Obsidian Portal (sync-state blob metadata)",
+                [TreeChange(LORE_STATE_PATH, state_content(state))],
+                progress=progress,
+            )
+            if follow_up:
+                commit_sha = follow_up
+    logger.info("portal pull: %d changed, %d skipped unchanged", changed, skipped)
+    progress.phase("done", message=f"changed {changed}, skipped {skipped} unchanged")
     update_sync_status_cache(state)
     return SyncResult(changed_pages=changed, committed=bool(commit_sha), commit_sha=commit_sha, message="Pulled Obsidian Portal into GitHub")
 
@@ -943,35 +1026,51 @@ def publish_git_to_portal_impl(force_portal_pull: bool = True, progress: Progres
     pages_state = state.setdefault("pages", {})
     conflicts: list[dict[str, Any]] = []
     created = updated = skipped = deleted = 0
-    repo_paths = sorted(gh_sync_files())
+    repo_tree = gh_list_tree()
+    repo_blobs = gh_repo_blob_index(repo_tree)
+    repo_paths = sorted(gh_sync_files(repo_tree))
     repo_path_set = set(repo_paths)
     git_changes: list[TreeChange] = []
     publish_total = len(repo_paths)
 
     for i, path in enumerate(repo_paths, start=1):
         progress.phase("publishing_portal", current=i, total=publish_total, path=path)
-        file = gh_get_file(path)
-        if not file:
-            continue
-        parsed = parse_sync_file(file.content)
-        fm = parsed["fm"]
-        if fm.get("draft", False):
-            skipped += 1
-            continue
-        kind = parsed["kind"]
-        body = parsed["body"]
-        description = parsed["description"]
-        bio = parsed["bio"]
-        gm_info = parsed["gm_info"]
-        page_id = fm.get("op_id")
-        current_hash = content_hash(fm, body=body, gm_info=gm_info, description=description, bio=bio)
-        title = fm.get("name") or fm.get("title") or path
-
+        page_id = None
+        title = path
         try:
+            known_for_path = next(
+                (entry for entry in pages_state.values() if entry.get("repo_path") == path),
+                {},
+            )
+            page_id = known_for_path.get("op_id")
+            blob_sha = repo_blobs.get(path)
+            if page_id and blob_sha and blob_sha == known_for_path.get("repo_blob_sha"):
+                skipped += 1
+                continue
+
+            file = gh_get_file(path)
+            if not file:
+                continue
+            parsed = parse_sync_file(file.content)
+            fm = parsed["fm"]
+            if fm.get("draft", False):
+                skipped += 1
+                continue
+            kind = parsed["kind"]
+            body = parsed["body"]
+            description = parsed["description"]
+            bio = parsed["bio"]
+            gm_info = parsed["gm_info"]
+            page_id = fm.get("op_id")
+            current_hash = content_hash(fm, body=body, gm_info=gm_info, description=description, bio=bio)
+            title = fm.get("name") or fm.get("title") or path
+
             if page_id:
                 known = pages_state.get(page_id, {})
                 if current_hash == known.get("repo_hash_at_sync"):
                     skipped += 1
+                    if blob_sha:
+                        known["repo_blob_sha"] = blob_sha
                     continue
                 if kind == "Character":
                     ensure_characters_index(force=True)
@@ -995,15 +1094,14 @@ def publish_git_to_portal_impl(force_portal_pull: bool = True, progress: Progres
                 else:
                     pushed = update_op_page(page_id, fm, body, gm_info)
                 updated += 1
-                pages_state[page_id] = {
-                    "repo_path": path,
-                    "op_id": page_id,
-                    "op_kind": kind,
-                    "op_slug": pushed.get("slug"),
-                    "op_updated_at": pushed.get("updated_at"),
-                    "repo_hash_at_sync": portal_record_hash(pushed, fm),
-                    "last_synced_title": pushed.get("title"),
-                }
+                sync_pages_state_entry(
+                    pages_state,
+                    page_id,
+                    path=path,
+                    record=pushed,
+                    repo_hash=portal_record_hash(pushed, fm),
+                    repo_blobs=repo_blobs,
+                )
             else:
                 if not ALLOW_CREATE_FROM_GIT:
                     skipped += 1
@@ -1016,15 +1114,14 @@ def publish_git_to_portal_impl(force_portal_pull: bool = True, progress: Progres
                 created += 1
                 new_content, new_fm = page_to_markdown(pushed)
                 git_changes.append(TreeChange(path, new_content))
-                pages_state[pushed["id"]] = {
-                    "repo_path": path,
-                    "op_id": pushed["id"],
-                    "op_kind": kind,
-                    "op_slug": pushed.get("slug"),
-                    "op_updated_at": pushed.get("updated_at"),
-                    "repo_hash_at_sync": portal_record_hash(pushed, new_fm),
-                    "last_synced_title": pushed.get("title"),
-                }
+                sync_pages_state_entry(
+                    pages_state,
+                    pushed["id"],
+                    path=path,
+                    record=pushed,
+                    repo_hash=portal_record_hash(pushed, new_fm),
+                    repo_blobs=repo_blobs,
+                )
         except HTTPException as exc:
             progress.record_error(str(exc.detail), phase="publishing_portal", path=path, op_id=page_id, title=title)
             raise
