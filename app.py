@@ -57,7 +57,7 @@ ALLOW_DELETE_FROM_GIT = os.environ.get("ALLOW_DELETE_FROM_GIT", "false").lower()
 
 app = FastAPI(
     title="Sindrel Lore Bridge",
-    version="0.6.1",
+    version="0.6.2",
     description="Bidirectional Obsidian Portal ↔ GitHub lore sync bridge with pull-through conflict protection.",
 )
 
@@ -902,7 +902,7 @@ def sync_pages_state_entry(
 def refresh_pages_state_blob_shas(pages_state: dict[str, Any], repo_blobs: dict[str, str]) -> None:
     for entry in pages_state.values():
         path = entry.get("repo_path")
-        if path and path in repo_blobs:
+        if path and path in repo_blobs and not entry.get("repo_blob_sha"):
             entry["repo_blob_sha"] = repo_blobs[path]
 
 
@@ -1046,15 +1046,7 @@ def publish_git_to_portal_impl(force_portal_pull: bool = True, progress: Progres
         page_id = None
         title = path
         try:
-            known_for_path = next(
-                (entry for entry in pages_state.values() if entry.get("repo_path") == path),
-                {},
-            )
-            page_id = known_for_path.get("op_id")
             blob_sha = repo_blobs.get(path)
-            if page_id and blob_sha and blob_sha == known_for_path.get("repo_blob_sha"):
-                skipped += 1
-                continue
 
             file = gh_get_file(path)
             if not file:
