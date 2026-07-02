@@ -57,7 +57,7 @@ ALLOW_DELETE_FROM_GIT = os.environ.get("ALLOW_DELETE_FROM_GIT", "false").lower()
 
 app = FastAPI(
     title="Sindrel Lore Bridge",
-    version="0.6.2",
+    version="0.7.0",
     description="Bidirectional Obsidian Portal ↔ GitHub lore sync bridge with pull-through conflict protection.",
 )
 
@@ -214,6 +214,25 @@ class PageResponse(BaseModel):
     body: str | None = None
     game_master_info: str | None = None
     is_game_master_only: bool = False
+    post_title: str | None = None
+    post_tagline: str | None = None
+    post_time: str | None = None
+
+
+class CharacterResponse(BaseModel):
+    id: str
+    slug: str | None = None
+    title: str
+    name: str | None = None
+    url: str | None = None
+    tags: list[str] = []
+    updated_at: str | None = None
+    description: str | None = None
+    bio: str | None = None
+    game_master_info: str | None = None
+    is_game_master_only: bool = False
+    is_player_character: bool = False
+    tagline: str | None = None
 
 
 @dataclass
@@ -309,10 +328,19 @@ def op_delete(path: str) -> None:
     op_request("DELETE", path)
 
 
-def html_to_text(value: str | None) -> str:
+def html_to_textile_fallback(value: str | None) -> str:
     if not value:
         return ""
-    return BeautifulSoup(value, "html.parser").get_text(" ", strip=True)
+    soup = BeautifulSoup(value, "html.parser")
+    for img in soup.find_all("img"):
+        src = (img.get("src") or "").strip()
+        alt = (img.get("alt") or "").strip()
+        if src:
+            replacement = f"!{src}({alt})!" if alt else f"!{src}!"
+        else:
+            replacement = ""
+        img.replace_with(replacement)
+    return soup.get_text("\n", strip=True)
 
 
 def page_title(page: dict[str, Any]) -> str:
@@ -325,8 +353,8 @@ def compact_snippet(text: str, limit: int = 500) -> str:
 
 
 def normalize_page(page: dict[str, Any]) -> dict[str, Any]:
-    body = page.get("body") or html_to_text(page.get("body_html"))
-    gm = page.get("game_master_info") or html_to_text(page.get("game_master_info_html"))
+    body = page.get("body") or html_to_textile_fallback(page.get("body_html"))
+    gm = page.get("game_master_info") or html_to_textile_fallback(page.get("game_master_info_html"))
     return {
         "id": page.get("id"),
         "slug": page.get("slug"),
@@ -370,6 +398,19 @@ def fetch_page(id_or_slug: str, force: bool = False) -> dict[str, Any]:
     return normalized
 
 
+def apply_wiki_post_fields(wiki_page: dict[str, Any], frontmatter: dict[str, Any]) -> None:
+    if (frontmatter.get("op_type") or "WikiPage") != "Post":
+        return
+    wiki_page["type"] = "Post"
+    post_title = frontmatter.get("post_title") or frontmatter.get("name") or frontmatter.get("title")
+    if post_title:
+        wiki_page["post_title"] = post_title
+    if "post_tagline" in frontmatter:
+        wiki_page["post_tagline"] = frontmatter.get("post_tagline") or ""
+    if frontmatter.get("post_time"):
+        wiki_page["post_time"] = frontmatter["post_time"]
+
+
 def update_op_page(page_id: str, frontmatter: dict[str, Any], body: str, gm_info: str) -> dict[str, Any]:
     wiki_page = {
         "body": body,
@@ -379,10 +420,11 @@ def update_op_page(page_id: str, frontmatter: dict[str, Any], body: str, gm_info
     }
     if frontmatter.get("name"):
         wiki_page["name"] = frontmatter["name"]
+    apply_wiki_post_fields(wiki_page, frontmatter)
     return normalize_page(op_put(f"/campaigns/{CAMPAIGN_ID}/wikis/{page_id}.json", {"wiki_page": wiki_page}))
 
 
-def create_op_page(frontmatter: dict[str, Any], body: str, gm_info: str) -> dict[str, Any]:
+def create_op_page(frontmatter: dict[str, Any], body: str, gm_info: str, *, path: str = "") -> dict[str, Any]:
     wiki_page = {
         "name": frontmatter.get("name") or frontmatter.get("title") or "Untitled Page",
         "body": body,
@@ -392,7 +434,14 @@ def create_op_page(frontmatter: dict[str, Any], body: str, gm_info: str) -> dict
     }
     if frontmatter.get("op_type"):
         wiki_page["type"] = frontmatter["op_type"]
-    return normalize_page(op_post(f"/campaigns/{CAMPAIGN_ID}/wikis.json", {"wiki_page": wiki_page}))
+    apply_wiki_post_fields(wiki_page, frontmatter)
+    try:
+        return normalize_page(op_post(f"/campaigns/{CAMPAIGN_ID}/wikis.json", {"wiki_page": wiki_page}))
+    except HTTPException as exc:
+        existing_id = resolve_existing_portal_id(frontmatter, path, "Wiki")
+        if is_name_taken_error(exc) and existing_id:
+            return update_op_page(existing_id, frontmatter, body, gm_info)
+        raise
 
 
 def op_author_id() -> str:
@@ -409,9 +458,9 @@ def op_author_id() -> str:
 
 
 def normalize_character(character: dict[str, Any]) -> dict[str, Any]:
-    desc = character.get("description") or html_to_text(character.get("description_html"))
-    bio = character.get("bio") or html_to_text(character.get("bio_html"))
-    gm = character.get("game_master_info") or html_to_text(character.get("game_master_info_html"))
+    desc = character.get("description") or html_to_textile_fallback(character.get("description_html"))
+    bio = character.get("bio") or html_to_textile_fallback(character.get("bio_html"))
+    gm = character.get("game_master_info") or html_to_textile_fallback(character.get("game_master_info_html"))
     template = character.get("dynamic_sheet_template") or {}
     return {
         "id": character.get("id"),
@@ -494,6 +543,8 @@ def create_op_character(
     description: str,
     bio: str,
     gm_info: str,
+    *,
+    path: str = "",
 ) -> dict[str, Any]:
     character: dict[str, Any] = {
         "name": frontmatter.get("name") or frontmatter.get("title") or "Untitled Character",
@@ -511,9 +562,15 @@ def create_op_character(
         character["dynamic_sheet"] = frontmatter["dynamic_sheet"]
     if frontmatter.get("dynamic_sheet_template_id"):
         character["dynamic_sheet_template_id"] = frontmatter["dynamic_sheet_template_id"]
-    return normalize_character(
-        op_post(f"/campaigns/{CAMPAIGN_ID}/characters.json", {"character": character})
-    )
+    try:
+        return normalize_character(
+            op_post(f"/campaigns/{CAMPAIGN_ID}/characters.json", {"character": character})
+        )
+    except HTTPException as exc:
+        existing_id = resolve_existing_portal_id(frontmatter, path, "Character")
+        if is_name_taken_error(exc) and existing_id:
+            return update_op_character(existing_id, frontmatter, description, bio, gm_info)
+        raise
 
 
 # ----------------------------- GitHub API -----------------------------
@@ -658,6 +715,51 @@ def slugify(value: str) -> str:
     return re.sub(r"-+", "-", value).strip("-") or "untitled"
 
 
+def repo_path_slug(path: str) -> str | None:
+    basename = path.rsplit("/", 1)[-1]
+    for ext in (LORE_FILE_EXT, LEGACY_FILE_EXT):
+        if basename.endswith(ext):
+            return basename[: -len(ext)] or None
+    return None
+
+
+def is_name_taken_error(exc: HTTPException) -> bool:
+    if exc.status_code != 400:
+        return False
+    detail = str(exc.detail).lower()
+    return "name has already been taken" in detail or '"code":4010' in detail
+
+
+def resolve_existing_portal_id(fm: dict[str, Any], path: str, kind: str) -> str | None:
+    slug = fm.get("op_slug") or repo_path_slug(path)
+    name = fm.get("name") or fm.get("title")
+    if kind == "Character":
+        ensure_characters_index(force=True)
+        index = _cache["characters_index"]
+    else:
+        ensure_index(force=True)
+        op_type = fm.get("op_type") or "WikiPage"
+        index = [p for p in _cache["index"] if (p.get("type") or "WikiPage") == op_type]
+    if slug:
+        match = next((m for m in index if m.get("slug") == slug), None)
+        if match:
+            return match.get("id")
+    if name:
+        name_lower = name.lower()
+        match = next(
+            (
+                m
+                for m in index
+                if (m.get("name") or "").lower() == name_lower
+                or (m.get("post_title") or "").lower() == name_lower
+            ),
+            None,
+        )
+        if match:
+            return match.get("id")
+    return None
+
+
 def content_hash(
     fm: dict[str, Any],
     *,
@@ -689,6 +791,10 @@ def content_hash(
             "op_gm_only": bool(fm.get("op_gm_only", False)),
             "op_type": fm.get("op_type") or "WikiPage",
         }
+        if comparable["op_type"] == "Post":
+            comparable["post_title"] = fm.get("post_title") or fm.get("name") or fm.get("title") or ""
+            comparable["post_tagline"] = fm.get("post_tagline") or ""
+            comparable["post_time"] = fm.get("post_time") or ""
     return hashlib.sha256(json.dumps(comparable, sort_keys=True).encode()).hexdigest()
 
 
@@ -723,10 +829,13 @@ def page_to_markdown(page: dict[str, Any]) -> tuple[str, dict[str, Any]]:
         "op_gm_only": bool(page.get("is_game_master_only")),
         "tags": page.get("tags") or [],
     }
-    if page.get("post_tagline"):
-        fm["post_tagline"] = page["post_tagline"]
-    if page.get("post_time"):
-        fm["post_time"] = page["post_time"]
+    if (page.get("type") or "WikiPage") == "Post":
+        if page.get("post_title"):
+            fm["post_title"] = page["post_title"]
+        if page.get("post_tagline"):
+            fm["post_tagline"] = page["post_tagline"]
+        if page.get("post_time"):
+            fm["post_time"] = page["post_time"]
     front = yaml.safe_dump(fm, sort_keys=False, allow_unicode=True).strip()
     body = page.get("body") or ""
     gm = page.get("game_master_info") or ""
@@ -1062,6 +1171,22 @@ def publish_git_to_portal_impl(force_portal_pull: bool = True, progress: Progres
             bio = parsed["bio"]
             gm_info = parsed["gm_info"]
             page_id = fm.get("op_id")
+            had_op_id = bool(page_id)
+            if not page_id:
+                candidate = resolve_existing_portal_id(fm, path, kind)
+                if candidate:
+                    other_path = pages_state.get(candidate, {}).get("repo_path")
+                    if other_path and other_path != path:
+                        conflicts.append({
+                            "path": path,
+                            "op_id": candidate,
+                            "op_kind": kind,
+                            "reason": f"Obsidian Portal record already synced as {other_path}",
+                            "portal_updated_at": None,
+                            "known_updated_at": pages_state.get(candidate, {}).get("op_updated_at"),
+                        })
+                        continue
+                    page_id = candidate
             current_hash = content_hash(fm, body=body, gm_info=gm_info, description=description, bio=bio)
             title = fm.get("name") or fm.get("title") or path
 
@@ -1094,6 +1219,9 @@ def publish_git_to_portal_impl(force_portal_pull: bool = True, progress: Progres
                 else:
                     pushed = update_op_page(page_id, fm, body, gm_info)
                 updated += 1
+                if not had_op_id:
+                    new_content, new_fm = page_to_markdown(pushed)
+                    git_changes.append(TreeChange(path, new_content))
                 sync_pages_state_entry(
                     pages_state,
                     page_id,
@@ -1116,9 +1244,9 @@ def publish_git_to_portal_impl(force_portal_pull: bool = True, progress: Progres
                     )
                 progress.phase("publishing_portal", current=i, total=publish_total, path=path, title=title)
                 if kind == "Character":
-                    pushed = create_op_character(fm, description, bio, gm_info)
+                    pushed = create_op_character(fm, description, bio, gm_info, path=path)
                 else:
-                    pushed = create_op_page(fm, body, gm_info)
+                    pushed = create_op_page(fm, body, gm_info, path=path)
                 created += 1
                 new_content, new_fm = page_to_markdown(pushed)
                 git_changes.append(TreeChange(path, new_content))
@@ -1149,8 +1277,9 @@ def publish_git_to_portal_impl(force_portal_pull: bool = True, progress: Progres
                     else:
                         op_delete(f"/campaigns/{CAMPAIGN_ID}/wikis/{page_id}.json")
                 except HTTPException as exc:
-                    progress.record_error(str(exc.detail), phase="deleting_portal", path=path, op_id=page_id)
-                    raise
+                    if exc.status_code != 404:
+                        progress.record_error(str(exc.detail), phase="deleting_portal", path=path, op_id=page_id)
+                        raise
                 deleted += 1
                 del pages_state[page_id]
 
@@ -1582,6 +1711,59 @@ def search_lore(q: str = Query(...), limit: int = Query(8, ge=1, le=20), include
 @app.get("/get_page", response_model=PageResponse, dependencies=[Depends(require_auth)])
 def get_page(id_or_slug: str = Query(...)) -> PageResponse:
     return PageResponse(**fetch_page(id_or_slug))
+
+
+@app.get("/search_characters", response_model=SearchResponse, dependencies=[Depends(require_auth)])
+def search_characters(q: str = Query(...), limit: int = Query(8, ge=1, le=20), include_full_text: bool = Query(False)) -> SearchResponse:
+    ensure_characters_index()
+    query = q.lower().strip()
+    results: list[SearchResult] = []
+    for meta in _cache["characters_index"]:
+        title = meta.get("name") or meta.get("slug") or meta.get("id") or "Untitled"
+        tags = meta.get("tags") or []
+        haystack = " ".join([title, meta.get("slug") or "", " ".join(tags)])
+        character = None
+        if include_full_text:
+            try:
+                character = fetch_character(meta.get("id") or meta.get("slug") or "")
+                haystack += " " + (character.get("description") or "") + " " + (character.get("bio") or "") + " " + (character.get("game_master_info") or "")
+            except Exception:
+                pass
+        score = max(fuzz.partial_ratio(query, haystack.lower()), fuzz.token_set_ratio(query, haystack.lower()))
+        if score >= 35:
+            snippet = None
+            if character:
+                snippet = compact_snippet(" ".join([
+                    character.get("description") or "",
+                    character.get("bio") or "",
+                    character.get("game_master_info") or "",
+                ]))
+            results.append(SearchResult(
+                id=meta.get("id"), slug=meta.get("slug"), title=title, url=meta.get("character_url"), type="Character",
+                tags=tags, updated_at=meta.get("updated_at"), snippet=snippet, score=float(score),
+            ))
+    results.sort(key=lambda r: r.score, reverse=True)
+    return SearchResponse(results=results[:limit])
+
+
+@app.get("/get_character", response_model=CharacterResponse, dependencies=[Depends(require_auth)])
+def get_character(id_or_slug: str = Query(...)) -> CharacterResponse:
+    character = fetch_character(id_or_slug)
+    return CharacterResponse(
+        id=character["id"],
+        slug=character.get("slug"),
+        title=character.get("title") or character.get("name") or "Untitled",
+        name=character.get("name"),
+        url=character.get("url"),
+        tags=character.get("tags") or [],
+        updated_at=character.get("updated_at"),
+        description=character.get("description"),
+        bio=character.get("bio"),
+        game_master_info=character.get("game_master_info"),
+        is_game_master_only=bool(character.get("is_game_master_only")),
+        is_player_character=bool(character.get("is_player_character")),
+        tagline=character.get("tagline"),
+    )
 
 
 @app.get("/recent_changes", response_model=SearchResponse, dependencies=[Depends(require_auth)])

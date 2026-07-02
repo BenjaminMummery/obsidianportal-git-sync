@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Sindrel Lore Bridge
-  version: 0.6.1
+  version: 0.7.0
   description: Live lore retrieval and Git-backed sync bridge for an Obsidian Portal campaign wiki and characters.
 servers:
   - url: https://YOUR_DEPLOYED_DOMAIN_HERE
@@ -57,6 +57,36 @@ paths:
           schema: { type: string }
       responses:
         '200': { description: Page }
+  /search_characters:
+    get:
+      operationId: searchCharacters
+      summary: Search live Obsidian Portal characters, optionally full text.
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema: { type: string }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, default: 8, minimum: 1, maximum: 20 }
+        - name: include_full_text
+          in: query
+          required: false
+          schema: { type: boolean, default: false }
+      responses:
+        '200': { description: Search results }
+  /get_character:
+    get:
+      operationId: getCharacter
+      summary: Fetch one Obsidian Portal character by UUID or slug.
+      parameters:
+        - name: id_or_slug
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Character }
   /recent_changes:
     get:
       operationId: recentChanges

@@ -24,8 +24,10 @@ If you watch the bridge repo after a sync, it will look like nothing happened. C
 
 ### Read / lore assistant endpoints
 
-- `GET /search_lore?q=...` — wiki pages only (characters not included yet)
+- `GET /search_lore?q=...` — search wiki pages
 - `GET /get_page?id_or_slug=...` — single wiki page
+- `GET /search_characters?q=...` — search characters
+- `GET /get_character?id_or_slug=...` — single character
 - `GET /recent_changes` — recently updated wiki pages
 - `GET /diff/repo-vs-portal?path=...` — unified diff for one lore-repo file vs portal
 
@@ -46,6 +48,7 @@ All of the above require `Authorization: Bearer <LORE_BRIDGE_API_KEY>`.
   - Reads synced files from GitHub `main`.
   - Detects repo-side changes.
   - Updates or creates Obsidian Portal wiki pages and characters.
+  - Adventure log posts sync `post_title`, `post_tagline`, and `post_time` in frontmatter.
   - Refuses to publish records with detected conflicts.
   - Optional `?async=true` for progress polling.
 
@@ -473,7 +476,11 @@ That starts an async sync, prints progress every 2 seconds, then runs `git pull 
 | `LORE_FILE_EXT` | No | Default `.textile` |
 | `LORE_STATE_PATH` | No | Default `metadata/sync-state.json` |
 | `ALLOW_CREATE_FROM_GIT` | No | Default `true` — new files without `op_id` create portal records |
-| `ALLOW_DELETE_FROM_GIT` | No | Default `false` — deleting a file deletes the portal record |
+| `ALLOW_DELETE_FROM_GIT` | No | Default `false` — deleting a synced `.textile` file on publish removes the portal record (404 on already-deleted records is ignored) |
+
+### Delete sync from Git
+
+Set `ALLOW_DELETE_FROM_GIT=true` on the bridge if you want **deleting a synced file from the lore repo** (on publish) to delete the matching Obsidian Portal wiki page or character. Off by default because it is destructive. Only affects files that were previously synced (tracked in `metadata/sync-state.json`).
 | `CACHE_TTL_SECONDS` | No | In-memory OP index cache TTL (default 900) |
 
 ---
@@ -632,6 +639,6 @@ Before reading or editing campaign lore, call the bridge's sync_from_portal oper
 - Publish pulls portal state before pushing Git changes; concurrent edits on the same page in both places need manual care.
 - The bridge stores GM-only info in the repo. Use a private repo if you sync GM-only pages or characters.
 - Character avatars are not synced; only text fields and dynamic sheet JSON are mirrored.
-- Obsidian Portal **items** do not have a public API endpoint and cannot be synced.
-- Read/search API endpoints cover wiki pages only, not characters.
+- Obsidian Portal **items** have no public API ([official API docs](https://help.obsidianportal.com/article/82-api-overview) cover wiki pages and characters only) and cannot be synced.
+- Read/search for characters uses `/search_characters` and `/get_character`; `/recent_changes` is still wiki-only.
 - Async job status is in-memory only; redeploy/restart clears job history.
