@@ -57,7 +57,7 @@ ALLOW_DELETE_FROM_GIT = os.environ.get("ALLOW_DELETE_FROM_GIT", "false").lower()
 
 app = FastAPI(
     title="Sindrel Lore Bridge",
-    version="0.7.0",
+    version="0.7.1",
     description="Bidirectional Obsidian Portal ↔ GitHub lore sync bridge with pull-through conflict protection.",
 )
 
@@ -760,6 +760,41 @@ def resolve_existing_portal_id(fm: dict[str, Any], path: str, kind: str) -> str 
     return None
 
 
+def push_portal_record(
+    page_id: str,
+    kind: str,
+    fm: dict[str, Any],
+    *,
+    body: str,
+    description: str,
+    bio: str,
+    gm_info: str,
+    path: str,
+) -> tuple[dict[str, Any], str]:
+    try:
+        if kind == "Character":
+            return update_op_character(page_id, fm, description, bio, gm_info), page_id
+        return update_op_page(page_id, fm, body, gm_info), page_id
+    except HTTPException as exc:
+        if exc.status_code != 404:
+            raise
+        replacement = resolve_existing_portal_id(fm, path, kind)
+        if replacement:
+            if kind == "Character":
+                return update_op_character(replacement, fm, description, bio, gm_info), replacement
+            return update_op_page(replacement, fm, body, gm_info), replacement
+        if not ALLOW_CREATE_FROM_GIT:
+            raise HTTPException(
+                status_code=404,
+                detail=f"{path} op_id {page_id} not found on Obsidian Portal and no matching record to relink",
+            ) from exc
+        if kind == "Character":
+            created = create_op_character(fm, description, bio, gm_info, path=path)
+        else:
+            created = create_op_page(fm, body, gm_info, path=path)
+        return created, created["id"]
+
+
 def content_hash(
     fm: dict[str, Any],
     *,
@@ -1214,12 +1249,21 @@ def publish_git_to_portal_impl(force_portal_pull: bool = True, progress: Progres
                     })
                     continue
                 progress.phase("publishing_portal", current=i, total=publish_total, path=path, title=title)
-                if kind == "Character":
-                    pushed = update_op_character(page_id, fm, description, bio, gm_info)
-                else:
-                    pushed = update_op_page(page_id, fm, body, gm_info)
+                stale_id = page_id if had_op_id else None
+                pushed, page_id = push_portal_record(
+                    page_id,
+                    kind,
+                    fm,
+                    body=body,
+                    description=description,
+                    bio=bio,
+                    gm_info=gm_info,
+                    path=path,
+                )
                 updated += 1
-                if not had_op_id:
+                if not had_op_id or stale_id != page_id:
+                    if stale_id and stale_id in pages_state:
+                        del pages_state[stale_id]
                     new_content, new_fm = page_to_markdown(pushed)
                     git_changes.append(TreeChange(path, new_content))
                 sync_pages_state_entry(
