@@ -53,7 +53,7 @@ if not LORE_FILE_EXT.startswith("."):
 LEGACY_FILE_EXT = ".md"
 OP_AUTHOR_ID = os.environ.get("OP_AUTHOR_ID", "")
 ALLOW_CREATE_FROM_GIT = os.environ.get("ALLOW_CREATE_FROM_GIT", "true").lower() == "true"
-ALLOW_DELETE_FROM_GIT = os.environ.get("ALLOW_DELETE_FROM_GIT", "false").lower() == "true"
+ALLOW_DELETE_FROM_GIT = os.environ.get("ALLOW_DELETE_FROM_GIT", "true").lower() == "true"
 
 app = FastAPI(
     title="Sindrel Lore Bridge",

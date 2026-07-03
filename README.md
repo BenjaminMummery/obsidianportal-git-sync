@@ -281,7 +281,7 @@ GITHUB_BRANCH
 GITHUB_AUTHOR_NAME
 GITHUB_AUTHOR_EMAIL
 ALLOW_CREATE_FROM_GIT=true
-ALLOW_DELETE_FROM_GIT=false
+ALLOW_DELETE_FROM_GIT=true
 ```
 
 Optional:
@@ -476,11 +476,11 @@ That starts an async sync, prints progress every 2 seconds, then runs `git pull 
 | `LORE_FILE_EXT` | No | Default `.textile` |
 | `LORE_STATE_PATH` | No | Default `metadata/sync-state.json` |
 | `ALLOW_CREATE_FROM_GIT` | No | Default `true` — new files without `op_id` create portal records |
-| `ALLOW_DELETE_FROM_GIT` | No | Default `false` — deleting a synced `.textile` file on publish removes the portal record (404 on already-deleted records is ignored) |
+| `ALLOW_DELETE_FROM_GIT` | No | Default `true` — deleting a synced `.textile` file on publish removes the portal record (404 on already-deleted records is ignored) |
 
 ### Delete sync from Git
 
-Set `ALLOW_DELETE_FROM_GIT=true` on the bridge if you want **deleting a synced file from the lore repo** (on publish) to delete the matching Obsidian Portal wiki page or character. Off by default because it is destructive. Only affects files that were previously synced (tracked in `metadata/sync-state.json`).
+When `ALLOW_DELETE_FROM_GIT=true` (default), **deleting a synced file from the lore repo** on publish removes the matching Obsidian Portal wiki page or character. Only affects files previously tracked in `metadata/sync-state.json`. Set to `false` on the bridge if you want updates/creates only.
 | `CACHE_TTL_SECONDS` | No | In-memory OP index cache TTL (default 900) |
 
 ---
