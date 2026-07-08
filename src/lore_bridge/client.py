@@ -25,6 +25,25 @@ class BridgeClient:
         params = {"async": "true"} if async_mode else None
         return self._request_with_status("POST", "/sync/from-portal", params=params)
 
+    def start_sync_from_dndbeyond(self, *, async_mode: bool = True) -> tuple[int, dict[str, Any]]:
+        params = {"async": "true"} if async_mode else None
+        return self._request_with_status("POST", "/sync/from-dndbeyond", params=params)
+
+    def sync_from_dndbeyond(
+        self,
+        *,
+        async_mode: bool = True,
+        poll_interval: float = 2,
+        on_update: Callable[[dict[str, Any]], None] | None = None,
+    ) -> dict[str, Any]:
+        return self._run_sync_action(
+            "from-dndbeyond",
+            self.start_sync_from_dndbeyond,
+            async_mode=async_mode,
+            poll_interval=poll_interval,
+            on_update=on_update,
+        )
+
     def start_publish_main(self, *, async_mode: bool = True) -> tuple[int, dict[str, Any]]:
         params = {"async": "true"} if async_mode else None
         return self._request_with_status("POST", "/sync/publish-main", params=params)

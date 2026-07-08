@@ -22,6 +22,8 @@ from pydantic import BaseModel
 from rapidfuzz import fuzz
 from requests_oauthlib import OAuth1
 
+from lore_bridge.dndbeyond.sync import DdbSyncResult, sync_from_dndbeyond_impl
+
 load_dotenv()
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -57,7 +59,7 @@ ALLOW_DELETE_FROM_GIT = os.environ.get("ALLOW_DELETE_FROM_GIT", "true").lower() 
 
 app = FastAPI(
     title="Sindrel Lore Bridge",
-    version="0.7.1",
+    version="0.8.0",
     description="Bidirectional Obsidian Portal ↔ GitHub lore sync bridge with pull-through conflict protection.",
 )
 
@@ -84,9 +86,14 @@ PHASE_LABELS = {
     "committing_git": "Committing to GitHub",
     "publishing_portal": "Publishing to Obsidian Portal",
     "deleting_portal": "Removing deleted pages",
+    "fetching_dndbeyond": "Syncing D&D Beyond sheets",
     "done": "Finishing",
 }
-JOB_KIND_LABELS = {"from-portal": "Portal → GitHub", "publish-main": "GitHub → Portal"}
+JOB_KIND_LABELS = {
+    "from-portal": "Portal → GitHub",
+    "from-dndbeyond": "D&D Beyond → GitHub",
+    "publish-main": "GitHub → Portal",
+}
 
 
 class JobError(BaseModel):
@@ -184,6 +191,16 @@ class PublishResult(BaseModel):
     deleted: int = 0
     skipped: int = 0
     conflicts: list[dict[str, Any]] = []
+    message: str | None = None
+
+
+class DdbSyncResponse(BaseModel):
+    ok: bool = True
+    updated: int = 0
+    skipped: int = 0
+    errors: list[dict[str, str]] = []
+    committed: bool = False
+    commit_sha: str | None = None
     message: str | None = None
 
 
@@ -802,10 +819,12 @@ def content_hash(
     gm_info: str = "",
     description: str = "",
     bio: str = "",
+    ddb_sheet: str = "",
 ) -> str:
     kind = resource_kind(fm)
     if kind == "Character":
         comparable = {
+            "ddb_sheet": ddb_sheet or "",
             "description": description or "",
             "bio": bio or "",
             "game_master_info": gm_info or "",
@@ -877,10 +896,15 @@ def page_to_markdown(page: dict[str, Any]) -> tuple[str, dict[str, Any]]:
     content = normalize_textile_content(f"---\n{front}\n---\n\n{body.rstrip()}\n")
     if gm:
         content += f"\n<!-- GM_INFO_START -->\n{gm.rstrip()}\n<!-- GM_INFO_END -->\n"
-    return content, fm
+    return normalize_textile_content(content), fm
 
 
-def character_to_markdown(character: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+def character_to_markdown(
+    character: dict[str, Any],
+    *,
+    ddb_sheet: str = "",
+    tagline_description: str | None = None,
+) -> tuple[str, dict[str, Any]]:
     fm = {
         "op_id": character.get("id"),
         "op_slug": character.get("slug"),
@@ -903,16 +927,49 @@ def character_to_markdown(character: dict[str, Any]) -> tuple[str, dict[str, Any
         fm["dynamic_sheet_template_id"] = character["dynamic_sheet_template_id"]
     if character.get("avatar_url"):
         fm["avatar_url"] = character["avatar_url"]
-    front = yaml.safe_dump(fm, sort_keys=False, allow_unicode=True).strip()
-    description = (character.get("description") or "").rstrip()
+    if tagline_description is None:
+        tagline_description = character.get("description") or ""
+    description = tagline_description.rstrip()
     bio = (character.get("bio") or "").rstrip()
     gm = (character.get("game_master_info") or "").rstrip()
-    content = normalize_textile_content(
-        f"---\n{front}\n---\n\n<!-- OP_DESCRIPTION -->\n{description}\n\n<!-- OP_BIO -->\n{bio}\n"
+    content = rebuild_character_content(
+        fm,
+        ddb_sheet=ddb_sheet,
+        description=description,
+        bio=bio,
+        gm_info=gm,
     )
-    if gm:
-        content += f"\n<!-- GM_INFO_START -->\n{gm}\n<!-- GM_INFO_END -->\n"
     return content, fm
+
+
+def rebuild_character_content(
+    fm: dict[str, Any],
+    *,
+    ddb_sheet: str = "",
+    description: str = "",
+    bio: str = "",
+    gm_info: str = "",
+) -> str:
+    front = yaml.safe_dump(fm, sort_keys=False, allow_unicode=True).strip()
+    parts = [f"---\n{front}\n---\n"]
+    if ddb_sheet.strip():
+        parts.append(f"\n<!-- OP_DDB_SHEET -->\n{ddb_sheet.rstrip()}\n")
+    parts.append(f"\n<!-- OP_DESCRIPTION -->\n{description.rstrip()}\n\n<!-- OP_BIO -->\n{bio.rstrip()}\n")
+    content = normalize_textile_content("".join(parts))
+    if gm_info:
+        content += f"\n<!-- GM_INFO_START -->\n{gm_info.rstrip()}\n<!-- GM_INFO_END -->\n"
+    return normalize_textile_content(content)
+
+
+def op_character_description(ddb_sheet: str, tagline: str) -> str:
+    parts: list[str] = []
+    if ddb_sheet.strip():
+        parts.append("notextile.\n" + ddb_sheet.strip())
+    if tagline.strip():
+        if parts:
+            parts.append("\n\n")
+        parts.append(tagline.strip())
+    return "".join(parts)
 
 
 def parse_markdown(content: str) -> tuple[dict[str, Any], str, str]:
@@ -927,12 +984,12 @@ def normalize_textile_content(content: str) -> str:
 def parse_sync_file(content: str) -> dict[str, Any]:
     content = normalize_textile_content(content)
     if not content.startswith("---\n"):
-        return {"fm": {}, "body": content, "description": "", "bio": "", "gm_info": "", "kind": "Wiki"}
+        return {"fm": {}, "body": content, "ddb_sheet": "", "description": "", "bio": "", "gm_info": "", "kind": "Wiki"}
     end = content.find("\n---\n", 4)
     if end == -1:
         end = content.find("\n---", 4)
         if end == -1:
-            return {"fm": {}, "body": content, "description": "", "bio": "", "gm_info": "", "kind": "Wiki"}
+            return {"fm": {}, "body": content, "ddb_sheet": "", "description": "", "bio": "", "gm_info": "", "kind": "Wiki"}
     front = content[4:end]
     rest = content[end + 4 :].lstrip("\n")
     if rest.startswith("---\n"):
@@ -949,10 +1006,11 @@ def parse_sync_file(content: str) -> dict[str, Any]:
         body = before.rstrip() + after_end.strip("\n")
         gm_info = gm_info.strip("\n")
     if kind == "Character":
-        description, bio = split_character_sections(body)
+        ddb_sheet, description, bio = split_character_sections(body)
         return {
             "fm": fm,
             "body": "",
+            "ddb_sheet": ddb_sheet,
             "description": description,
             "bio": bio,
             "gm_info": gm_info,
@@ -961,6 +1019,7 @@ def parse_sync_file(content: str) -> dict[str, Any]:
     return {
         "fm": fm,
         "body": body.rstrip() + "\n",
+        "ddb_sheet": "",
         "description": "",
         "bio": "",
         "gm_info": gm_info,
@@ -968,21 +1027,40 @@ def parse_sync_file(content: str) -> dict[str, Any]:
     }
 
 
-def split_character_sections(body: str) -> tuple[str, str]:
+def _section_text(value: str) -> str:
+    value = value.strip("\n")
+    return value + ("\n" if value and not value.endswith("\n") else "")
+
+
+def split_character_sections(body: str) -> tuple[str, str, str]:
+    ddb_sheet = ""
     description = ""
     bio = ""
-    text = body
+    text = body.lstrip("\n")
+
+    if "<!-- OP_DDB_SHEET -->" in text:
+        _, after = text.split("<!-- OP_DDB_SHEET -->", 1)
+        if "<!-- OP_DESCRIPTION -->" in after:
+            ddb_sheet, text = after.split("<!-- OP_DESCRIPTION -->", 1)
+        elif "<!-- OP_BIO -->" in after:
+            ddb_sheet, text = after.split("<!-- OP_BIO -->", 1)
+            text = "<!-- OP_DESCRIPTION -->\n" + text
+        else:
+            ddb_sheet = after
+            text = ""
+
     if "<!-- OP_BIO -->" in text:
         desc_part, bio = text.split("<!-- OP_BIO -->", 1)
         if "<!-- OP_DESCRIPTION -->" in desc_part:
-            description = desc_part.split("<!-- OP_DESCRIPTION -->", 1)[1]
+            _, description = desc_part.split("<!-- OP_DESCRIPTION -->", 1)
         else:
             description = desc_part
     elif "<!-- OP_DESCRIPTION -->" in text:
-        description = text.split("<!-- OP_DESCRIPTION -->", 1)[1]
+        _, description = text.split("<!-- OP_DESCRIPTION -->", 1)
     else:
         description = text
-    return description.strip("\n") + ("\n" if description and not description.endswith("\n") else ""), bio.strip("\n") + ("\n" if bio and not bio.endswith("\n") else "")
+
+    return _section_text(ddb_sheet), _section_text(description), _section_text(bio)
 
 
 def unified_diff(old: str, new: str, old_name: str, new_name: str, limit: int = 12000) -> str:
@@ -992,13 +1070,21 @@ def unified_diff(old: str, new: str, old_name: str, new_name: str, limit: int = 
 
 # ----------------------------- sync logic -----------------------------
 
-def portal_record_hash(record: dict[str, Any], fm: dict[str, Any]) -> str:
+def portal_record_hash(
+    record: dict[str, Any],
+    fm: dict[str, Any],
+    *,
+    ddb_sheet: str = "",
+    description: str | None = None,
+    bio: str | None = None,
+) -> str:
     if record.get("op_kind") == "Character":
         return content_hash(
             fm,
             gm_info=record.get("game_master_info") or "",
-            description=record.get("description") or "",
-            bio=record.get("bio") or "",
+            description=description if description is not None else (record.get("description") or ""),
+            bio=bio if bio is not None else (record.get("bio") or ""),
+            ddb_sheet=ddb_sheet,
         )
     return content_hash(fm, body=record.get("body") or "", gm_info=record.get("game_master_info") or "")
 
@@ -1076,13 +1162,39 @@ def sync_resource_from_portal(
         if progress:
             progress.record_error(str(exc), op_id=record_id, title=title, phase=progress.job.phase if progress.job else None)
         raise
-    content, fm = page_to_markdown(record)
     path = page_path(record)
     legacy_path = known.get("repo_path")
     old_file = gh_get_file(path) if path in repo_blobs else None
     if not old_file and legacy_path and legacy_path != path and legacy_path in repo_blobs:
         old_file = gh_get_file(legacy_path)
-    repo_hash = portal_record_hash(record, fm)
+    preserved_ddb_sheet = ""
+    preserved_ddb_fm: dict[str, Any] = {}
+    preserved_description = None
+    if old_file and is_character:
+        existing = parse_sync_file(old_file.content)
+        if existing.get("kind") == "Character" and existing["fm"].get("dndbeyond_id"):
+            preserved_ddb_sheet = existing.get("ddb_sheet") or ""
+            preserved_description = existing.get("description") or ""
+            for key in ("dndbeyond_id", "dndbeyond_url", "dndbeyond_synced_at"):
+                if existing["fm"].get(key):
+                    preserved_ddb_fm[key] = existing["fm"][key]
+    if is_character:
+        content, fm = character_to_markdown(
+            record,
+            ddb_sheet=preserved_ddb_sheet,
+            tagline_description=preserved_description,
+        )
+    else:
+        content, fm = page_to_markdown(record)
+    fm.update(preserved_ddb_fm)
+    parsed_content = parse_sync_file(content)
+    repo_hash = portal_record_hash(
+        record,
+        fm,
+        ddb_sheet=parsed_content.get("ddb_sheet") or "",
+        description=parsed_content.get("description") or "",
+        bio=parsed_content.get("bio") or "",
+    )
     changes: list[TreeChange] = []
     changed = 0
     if not old_file or old_file.content != content or legacy_path != path:
@@ -1202,9 +1314,11 @@ def publish_git_to_portal_impl(force_portal_pull: bool = True, progress: Progres
                 continue
             kind = parsed["kind"]
             body = parsed["body"]
+            ddb_sheet = parsed.get("ddb_sheet") or ""
             description = parsed["description"]
             bio = parsed["bio"]
             gm_info = parsed["gm_info"]
+            op_description = op_character_description(ddb_sheet, description) if kind == "Character" else description
             page_id = fm.get("op_id")
             had_op_id = bool(page_id)
             if not page_id:
@@ -1222,7 +1336,14 @@ def publish_git_to_portal_impl(force_portal_pull: bool = True, progress: Progres
                         })
                         continue
                     page_id = candidate
-            current_hash = content_hash(fm, body=body, gm_info=gm_info, description=description, bio=bio)
+            current_hash = content_hash(
+                fm,
+                body=body,
+                gm_info=gm_info,
+                description=description,
+                bio=bio,
+                ddb_sheet=ddb_sheet,
+            )
             title = fm.get("name") or fm.get("title") or path
 
             if page_id:
@@ -1255,7 +1376,7 @@ def publish_git_to_portal_impl(force_portal_pull: bool = True, progress: Progres
                     kind,
                     fm,
                     body=body,
-                    description=description,
+                    description=op_description,
                     bio=bio,
                     gm_info=gm_info,
                     path=path,
@@ -1264,14 +1385,35 @@ def publish_git_to_portal_impl(force_portal_pull: bool = True, progress: Progres
                 if not had_op_id or stale_id != page_id:
                     if stale_id and stale_id in pages_state:
                         del pages_state[stale_id]
-                    new_content, new_fm = page_to_markdown(pushed)
+                    if kind == "Character":
+                        new_content, new_fm = character_to_markdown(
+                            pushed,
+                            ddb_sheet=ddb_sheet,
+                            tagline_description=description,
+                        )
+                        new_fm.update({k: fm[k] for k in ("dndbeyond_id", "dndbeyond_url", "dndbeyond_synced_at") if fm.get(k)})
+                        new_content = rebuild_character_content(
+                            new_fm,
+                            ddb_sheet=ddb_sheet,
+                            description=description,
+                            bio=bio,
+                            gm_info=gm_info,
+                        )
+                    else:
+                        new_content, new_fm = page_to_markdown(pushed)
                     git_changes.append(TreeChange(path, new_content))
                 sync_pages_state_entry(
                     pages_state,
                     page_id,
                     path=path,
                     record=pushed,
-                    repo_hash=portal_record_hash(pushed, fm),
+                    repo_hash=content_hash(
+                        fm,
+                        gm_info=gm_info,
+                        description=description,
+                        bio=bio,
+                        ddb_sheet=ddb_sheet,
+                    ),
                     repo_blobs=repo_blobs,
                 )
             else:
@@ -1288,18 +1430,39 @@ def publish_git_to_portal_impl(force_portal_pull: bool = True, progress: Progres
                     )
                 progress.phase("publishing_portal", current=i, total=publish_total, path=path, title=title)
                 if kind == "Character":
-                    pushed = create_op_character(fm, description, bio, gm_info, path=path)
+                    pushed = create_op_character(fm, op_description, bio, gm_info, path=path)
                 else:
                     pushed = create_op_page(fm, body, gm_info, path=path)
                 created += 1
-                new_content, new_fm = page_to_markdown(pushed)
+                if kind == "Character":
+                    new_content, new_fm = character_to_markdown(
+                        pushed,
+                        ddb_sheet=ddb_sheet,
+                        tagline_description=description,
+                    )
+                    new_fm.update({k: fm[k] for k in ("dndbeyond_id", "dndbeyond_url", "dndbeyond_synced_at") if fm.get(k)})
+                    new_content = rebuild_character_content(
+                        new_fm,
+                        ddb_sheet=ddb_sheet,
+                        description=description,
+                        bio=bio,
+                        gm_info=gm_info,
+                    )
+                else:
+                    new_content, new_fm = page_to_markdown(pushed)
                 git_changes.append(TreeChange(path, new_content))
                 sync_pages_state_entry(
                     pages_state,
                     pushed["id"],
                     path=path,
                     record=pushed,
-                    repo_hash=portal_record_hash(pushed, new_fm),
+                    repo_hash=content_hash(
+                        new_fm,
+                        gm_info=gm_info,
+                        description=description,
+                        bio=bio,
+                        ddb_sheet=ddb_sheet,
+                    ),
                     repo_blobs=repo_blobs,
                 )
         except HTTPException as exc:
@@ -1354,6 +1517,20 @@ def publish_git_to_portal_impl(force_portal_pull: bool = True, progress: Progres
         ok=len(conflicts) == 0,
         message="Published GitHub main to Obsidian Portal" if not conflicts else "Conflicts found; no conflicted files were published",
     )
+
+
+def sync_from_dndbeyond_bridge(progress: ProgressReporter | None = None) -> DdbSyncResponse:
+    result = sync_from_dndbeyond_impl(
+        gh_sync_files=lambda: gh_sync_files(gh_list_tree()),
+        gh_get_file=gh_get_file,
+        gh_commit_changes=gh_commit_changes,
+        parse_sync_file=parse_sync_file,
+        rebuild_character_content=rebuild_character_content,
+        TreeChange=TreeChange,
+        LORE_CHARACTERS_DIR=LORE_CHARACTERS_DIR,
+        progress=progress,
+    )
+    return DdbSyncResponse(**result.model_dump())
 
 
 # ----------------------------- sync jobs -----------------------------
@@ -1681,6 +1858,15 @@ def sync_from_portal(async_mode: bool = Query(False, alias="async")):
         body = JobStartResponse(job_id=job_id, kind="from-portal").model_dump()
         return JSONResponse(status_code=202, content=body)
     return run_sync_job_blocking("from-portal", lambda progress: sync_from_portal_impl(progress))
+
+
+@app.post("/sync/from-dndbeyond", dependencies=[Depends(require_auth)])
+def sync_from_dndbeyond(async_mode: bool = Query(False, alias="async")):
+    if async_mode:
+        job_id = start_sync_job("from-dndbeyond", lambda progress: sync_from_dndbeyond_bridge(progress))
+        body = JobStartResponse(job_id=job_id, kind="from-dndbeyond").model_dump()
+        return JSONResponse(status_code=202, content=body)
+    return run_sync_job_blocking("from-dndbeyond", lambda progress: sync_from_dndbeyond_bridge(progress))
 
 
 @app.post("/sync/publish-main", dependencies=[Depends(require_auth)])

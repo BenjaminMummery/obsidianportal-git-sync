@@ -131,6 +131,41 @@ def _sync_to_op(
             raise typer.Exit(1) from exc
 
 
+@app.command("ddb-sync")
+def ddb_sync(
+    git_pull: bool = typer.Option(True, "--git-pull/--no-git-pull", help="Fast-forward local clone after bridge sync."),
+    publish: bool = typer.Option(False, "--publish", help="Publish to Obsidian Portal after syncing D&D Beyond → GitHub."),
+    async_mode: bool = typer.Option(True, "--async/--blocking", help="Use async job with progress polling."),
+) -> None:
+    """Refresh D&D Beyond sheet HTML in linked character files (GitHub), then optionally publish to OP."""
+    client = _load_client()
+    typer.echo(f"Syncing D&D Beyond → GitHub at {client.base_url}/sync/from-dndbeyond ...")
+    try:
+        job = client.sync_from_dndbeyond(async_mode=async_mode, on_update=_print_job)
+    except BridgeError as exc:
+        typer.secho(str(exc), fg=typer.colors.RED, err=True)
+        raise typer.Exit(1) from exc
+
+    payload = _job_payload(job)
+    _print_result(payload)
+
+    errors = payload.get("errors") or []
+    if errors:
+        typer.secho(f"D&D Beyond sync finished with {len(errors)} error(s).", fg=typer.colors.RED, err=True)
+        raise typer.Exit(1)
+
+    if git_pull:
+        typer.echo("Updating local clone (git pull --ff-only) ...")
+        try:
+            git_pull_ff()
+        except GitError as exc:
+            typer.secho(str(exc), fg=typer.colors.RED, err=True)
+            raise typer.Exit(1) from exc
+
+    if publish:
+        _sync_to_op(do_push=False, git_pull=git_pull, async_mode=async_mode, remote=default_git_remote(), branch=None)
+
+
 @app.command("from-op")
 def from_op(
     git_pull: bool = typer.Option(True, "--git-pull/--no-git-pull", help="Fast-forward local clone after bridge sync."),
