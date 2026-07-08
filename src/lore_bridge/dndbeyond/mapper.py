@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-import html
 import re
 from datetime import datetime, timezone
 from typing import Any
+
+from lore_bridge.dndbeyond.render import html_text
 
 STAT_IDS = {1: "str", 2: "dex", 3: "con", 4: "int", 5: "wis", 6: "cha"}
 STAT_LABELS = {"str": "STR", "dex": "DEX", "con": "CON", "int": "INT", "wis": "WIS", "cha": "CHA"}
@@ -112,17 +113,17 @@ def map_character(data: dict[str, Any], *, synced_at: datetime | None = None) ->
         "spells_prepared": _spells_prepared(data),
         "ddb_last_sync": sync_label,
         "avatar_url": avatar_url,
-        "avatar_img": f'<img src="{html.escape(avatar_url)}" alt="">' if avatar_url else "",
-        "player": html.escape(player) if player else "",
-        "campaign": html.escape(campaign) if campaign else "",
+        "avatar_img": f'<img src="{html_text(avatar_url)}" alt="">' if avatar_url else "",
+        "player": html_text(player) if player else "",
+        "campaign": html_text(campaign) if campaign else "",
         "player_campaign": _player_campaign(player, campaign),
     }
 
 
 def _player_campaign(player: str, campaign: str) -> str:
     if player and campaign:
-        return f"{html.escape(player)} · {html.escape(campaign)}"
-    return html.escape(player or campaign)
+        return f"{html_text(player)} · {html_text(campaign)}"
+    return html_text(player or campaign)
 
 
 def _active_modifiers(data: dict[str, Any]) -> list[dict[str, Any]]:
@@ -326,12 +327,12 @@ def _actions(data: dict[str, Any], scores: dict[str, int], prof: int, mods: list
         elif isinstance(range_obj, int):
             range_val = range_obj
         range_text = f", range {range_val} ft." if range_val else ", melee 5 ft."
-        detail = f"{name}. {_signed(attack_bonus)} to hit{range_text}"
+        detail = f"{_signed(attack_bonus)} to hit{range_text}"
         if damage:
             detail += f", {damage}"
             if damage_type:
                 detail += f" {damage_type.lower()}"
-        lines.append(detail)
+        lines.append(_named_detail_line(name, detail))
 
     action_groups = data.get("actions") or {}
     if isinstance(action_groups, dict):
@@ -342,14 +343,14 @@ def _actions(data: dict[str, Any], scores: dict[str, int], prof: int, mods: list
                 snippet = _clean_snippet(action.get("snippet") or action.get("description") or "")
                 name = action.get("name") or "Action"
                 if snippet:
-                    lines.append(f"{name}. {snippet}")
+                    lines.append(_named_detail_line(name, snippet))
                 elif name:
-                    lines.append(name)
+                    lines.append(_named_detail_line(name, ""))
 
     for action in data.get("customActions") or []:
         snippet = _clean_snippet(action.get("snippet") or action.get("description") or "")
         name = action.get("name") or "Custom Action"
-        lines.append(f"{name}. {snippet}" if snippet else name)
+        lines.append(_named_detail_line(name, snippet))
 
     return "\n".join(lines) if lines else "—"
 
@@ -381,7 +382,7 @@ def _features(data: dict[str, Any], level: int) -> str:
         definition = trait.get("definition") or {}
         snippet = _clean_snippet(definition.get("snippet") or definition.get("description") or "")
         name = definition.get("name") or "Trait"
-        lines.append(f"{name}. {snippet}" if snippet else name)
+        lines.append(_named_detail_line(name, snippet))
     for cls in data.get("classes") or []:
         for feature in cls.get("classFeatures") or []:
             definition = feature.get("definition") or {}
@@ -391,12 +392,12 @@ def _features(data: dict[str, Any], level: int) -> str:
             snippet = _clean_snippet(definition.get("snippet") or definition.get("description") or "")
             name = definition.get("name") or "Feature"
             if snippet or name:
-                lines.append(f"{name}. {snippet}" if snippet else name)
+                lines.append(_named_detail_line(name, snippet))
     for feat in data.get("feats") or []:
         definition = feat.get("definition") or {}
         snippet = _clean_snippet(definition.get("snippet") or definition.get("description") or "")
         name = definition.get("name") or "Feat"
-        lines.append(f"{name}. {snippet}" if snippet else name)
+        lines.append(_named_detail_line(name, snippet))
     return "\n".join(lines) if lines else "—"
 
 
@@ -486,13 +487,10 @@ def _spell_slots(data: dict[str, Any], level: int) -> str:
             break
     slot_table = (rules or {}).get("levelSpellSlots") or []
     slot_maxes = slot_table[level] if level < len(slot_table) else []
-    used_by_level = {slot.get("level"): slot.get("used") or 0 for slot in data.get("spellSlots") or []}
     for idx, max_slots in enumerate(slot_maxes or [], start=1):
         if not max_slots:
             continue
-        used = used_by_level.get(idx, 0)
-        remaining = max(0, max_slots - used)
-        lines.append(f"{idx}{_ordinal_suffix(idx)} {remaining}/{max_slots}")
+        lines.append(f"{idx}{_ordinal_suffix(idx)} {max_slots}")
     return "\n".join(lines) if lines else "—"
 
 
@@ -522,3 +520,11 @@ def _clean_snippet(value: str) -> str:
     text = re.sub(r"<[^>]+>", " ", value or "")
     text = re.sub(r"\{\{[^}]+\}\}", "", text)
     return " ".join(text.split())
+
+
+def _named_detail_line(name: str, detail: str) -> str:
+    name = (name or "").strip()
+    detail = (detail or "").strip()
+    if detail:
+        return f"<strong>{html_text(name)}.</strong> {html_text(detail)}"
+    return f"<strong>{html_text(name)}</strong>"

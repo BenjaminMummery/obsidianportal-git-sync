@@ -4,7 +4,7 @@
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   font-size: 14px;
   line-height: 1.45;
-  color: #1a202c;
+  color: #211b18;
   max-width: 920px;
   margin: 0 auto;
 }
@@ -14,9 +14,13 @@
   gap: 1rem;
   margin-bottom: 1rem;
   padding: 1rem 1.1rem;
-  background: linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%);
-  border-radius: 10px;
-  color: #fff;
+  background-color: #deded8;
+  color: #211b18;
+  border-top: 4px solid #3b0709;
+  border-bottom: 4px solid #3b0709;
+  border-left: 1px solid #6d6862;
+  border-right: 1px solid #6d6862;
+  border-radius: 0;
 }
 
 .ddb-sheet .ddb-header-main {
@@ -29,12 +33,13 @@
   font-size: 1.65rem;
   font-weight: 700;
   line-height: 1.2;
+  color: #211b18;
 }
 
 .ddb-sheet .ddb-subtitle {
   margin: 0 0 0.65rem;
   font-size: 1.05rem;
-  opacity: 0.95;
+  color: #342a24;
 }
 
 .ddb-sheet .ddb-meta {
@@ -60,13 +65,13 @@
 }
 
 .ddb-sheet .ddb-header .ddb-label {
-  color: rgba(255, 255, 255, 0.75);
+  color: #64748b;
 }
 
 .ddb-sheet .ddb-links {
   margin: 0.75rem 0 0;
   font-size: 0.85rem;
-  opacity: 0.9;
+  color: #342a24;
 }
 
 .ddb-sheet .ddb-avatar-wrap {
@@ -77,17 +82,21 @@
   display: block;
   width: 120px;
   height: 120px;
-  border: 2px solid rgba(255, 255, 255, 0.5);
+  border: 2px solid #6d6862;
   border-radius: 8px;
 }
 
 .ddb-sheet .ddb-section {
   margin-bottom: 0.85rem;
   padding: 0.85rem 1rem;
-  background: #fff;
-  border: 1px solid #e2e8f0;
-  border-radius: 10px;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  background-color: #deded8;
+  color: #211b18;
+  border-top: 4px solid #3b0709;
+  border-bottom: 4px solid #3b0709;
+  border-left: 1px solid #6d6862;
+  border-right: 1px solid #6d6862;
+  border-radius: 0;
+  box-shadow: none;
 }
 
 .ddb-sheet .ddb-section-title {
@@ -96,8 +105,8 @@
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: #334155;
-  border-bottom: 2px solid #e2e8f0;
+  color: #3b0709;
+  border-bottom: 2px solid #6d6862;
   padding-bottom: 0.35rem;
 }
 
@@ -117,9 +126,9 @@
 
 .ddb-sheet .ddb-pill {
   padding: 0.45rem 0.55rem;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
+  background-color: #deded8;
+  border: 1px solid #6d6862;
+  border-radius: 0;
   text-align: center;
 }
 
@@ -139,12 +148,13 @@
 .ddb-sheet .ddb-pill-value {
   font-size: 1.15rem;
   font-weight: 700;
+  color: #211b18;
 }
 
 .ddb-sheet .ddb-pill-sep {
   margin: 0 0.15rem;
   font-weight: 700;
-  color: #94a3b8;
+  color: #64748b;
 }
 
 .ddb-sheet .ddb-columns {
@@ -176,9 +186,9 @@
 .ddb-sheet .ddb-ability {
   padding: 0.45rem;
   text-align: center;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
+  background-color: #deded8;
+  border: 1px solid #6d6862;
+  border-radius: 0;
 }
 
 .ddb-sheet .ddb-ability-label {
@@ -192,13 +202,18 @@
   display: block;
   margin-top: 0.15rem;
   font-weight: 700;
+  color: #211b18;
 }
 
 .ddb-sheet .ddb-block {
   padding: 0.55rem 0.65rem;
-  background: #f8fafc;
-  border: 1px solid #edf2f7;
-  border-radius: 8px;
+  background-color: #deded8;
+  border: 1px solid #6d6862;
+  border-radius: 0;
+}
+
+.ddb-sheet .ddb-block strong {
+  color: #3b0709;
 }
 
 .ddb-sheet .ddb-sense-row {
@@ -210,9 +225,9 @@
 
 .ddb-sheet .ddb-sense-row div {
   padding: 0.45rem;
-  background: #f8fafc;
-  border: 1px solid #edf2f7;
-  border-radius: 8px;
+  background-color: #deded8;
+  border: 1px solid #6d6862;
+  border-radius: 0;
   text-align: center;
 }
 
@@ -227,6 +242,7 @@
 
 .ddb-sheet .ddb-sense-value {
   font-weight: 700;
+  color: #211b18;
 }
 
 .ddb-sheet .ddb-kv {
