@@ -209,6 +209,43 @@ def publish(
 
 
 @app.command()
+def help() -> None:
+    """Show setup, commands, and typical workflows."""
+    load_dotenv()
+    bridge_url = os.environ.get("LORE_BRIDGE_URL", "").strip() or "(not set)"
+    branch = default_git_branch()
+    remote = default_git_remote()
+    typer.echo(
+        f"""lore-bridge — Obsidian Portal ↔ GitHub lore sync (run from your lore repo clone)
+
+Setup (.env in repo root, not committed):
+  LORE_BRIDGE_URL={bridge_url}
+  LORE_BRIDGE_API_KEY=<your bridge API key>
+  LORE_GIT_REMOTE={remote}
+  LORE_GIT_BRANCH={branch}
+
+Commands:
+  status              Bridge health and last sync times
+  from-op  (pull)     Portal → GitHub, then git pull --ff-only
+  to-op    (publish)  git push, GitHub → Portal, then git pull --ff-only
+  ddb-sync            D&D Beyond → GitHub for characters with dndbeyond_id
+                      Add --publish to push sheets to Obsidian Portal after
+  serve               Run the bridge API locally (bridge repo checkout)
+
+Typical workflow:
+  1. uv run lore-bridge from-op          # refresh local clone from portal
+  2. edit lore/**/*.textile on a branch
+  3. merge to {branch}, then uv run lore-bridge to-op
+
+D&D Beyond sheets (characters with dndbeyond_id in frontmatter):
+  uv run lore-bridge ddb-sync --publish
+
+Per-command options: uv run lore-bridge <command> --help
+"""
+    )
+
+
+@app.command()
 def status() -> None:
     """Show bridge health and last sync timestamps."""
     client = _load_client()
