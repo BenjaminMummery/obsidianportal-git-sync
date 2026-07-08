@@ -107,7 +107,7 @@ def map_character(data: dict[str, Any], *, synced_at: datetime | None = None) ->
         "passive_perception": str(10 + _skill_bonus("perception", scores, prof, mods)),
         "passive_investigation": str(10 + _skill_bonus("investigation", scores, prof, mods)),
         "passive_insight": str(10 + _skill_bonus("insight", scores, prof, mods)),
-        "actions": _actions(data, scores, prof, mods),
+        "combat_actions": _combat_actions(data, scores, prof),
         "limited_use": _limited_use(data),
         "features_traits": _features(data, level),
         "proficiencies": _proficiencies(mods),
@@ -311,7 +311,24 @@ def _skills(scores: dict[str, int], prof: int, mods: list[dict[str, Any]]) -> st
     return "\n".join(lines)
 
 
-def _actions(data: dict[str, Any], scores: dict[str, int], prof: int, mods: list[dict[str, Any]]) -> str:
+def _activation_bucket(action: dict[str, Any]) -> str:
+    activation_type = (action.get("activation") or {}).get("activationType")
+    if activation_type == 3:
+        return "bonus_actions"
+    if activation_type == 4:
+        return "reactions"
+    return "actions"
+
+
+def _action_detail_line(action: dict[str, Any]) -> str:
+    snippet = _clean_snippet(action.get("snippet") or action.get("description") or "")
+    name = action.get("name") or "Action"
+    if snippet:
+        return _named_detail_line(name, snippet)
+    return _named_detail_line(name, "")
+
+
+def _weapon_attack_lines(data: dict[str, Any], scores: dict[str, int], prof: int) -> list[str]:
     lines: list[str] = []
     for item in data.get("inventory") or []:
         if not _item_active(item):
@@ -337,6 +354,15 @@ def _actions(data: dict[str, Any], scores: dict[str, int], prof: int, mods: list
             if damage_type:
                 detail += f" {damage_type.lower()}"
         lines.append(_named_detail_line(name, detail))
+    return lines
+
+
+def _combat_actions(data: dict[str, Any], scores: dict[str, int], prof: int) -> str:
+    buckets: dict[str, list[str]] = {
+        "actions": _weapon_attack_lines(data, scores, prof),
+        "bonus_actions": [],
+        "reactions": [],
+    }
 
     action_groups = data.get("actions") or {}
     if isinstance(action_groups, dict):
@@ -344,19 +370,28 @@ def _actions(data: dict[str, Any], scores: dict[str, int], prof: int, mods: list
             if not group:
                 continue
             for action in group:
-                snippet = _clean_snippet(action.get("snippet") or action.get("description") or "")
-                name = action.get("name") or "Action"
-                if snippet:
-                    lines.append(_named_detail_line(name, snippet))
-                elif name:
-                    lines.append(_named_detail_line(name, ""))
+                buckets[_activation_bucket(action)].append(_action_detail_line(action))
 
     for action in data.get("customActions") or []:
-        snippet = _clean_snippet(action.get("snippet") or action.get("description") or "")
-        name = action.get("name") or "Custom Action"
-        lines.append(_named_detail_line(name, snippet))
+        buckets[_activation_bucket(action)].append(_action_detail_line(action))
 
-    return "\n".join(lines) if lines else "—"
+    titles = {
+        "actions": "Actions",
+        "bonus_actions": "Bonus Actions",
+        "reactions": "Reactions",
+    }
+    parts: list[str] = []
+    for key, title in titles.items():
+        lines = buckets[key]
+        if not lines:
+            continue
+        content = "<br>\n".join(lines)
+        parts.append(
+            f'<h3 class="ddb-subsection-title">{title}</h3>\n<div class="ddb-block">{content}</div>'
+        )
+    if not parts:
+        return ""
+    return '<h2 class="ddb-section-title">Combat</h2>\n' + "\n".join(parts)
 
 
 def _limited_use(data: dict[str, Any]) -> str:

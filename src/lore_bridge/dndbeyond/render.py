@@ -15,13 +15,13 @@ _PRE_BLOCK_KEYS = {
 }
 
 _HTML_BLOCK_KEYS = {
-    "actions",
     "features_traits",
 }
 
 _RAW_HTML_KEYS = {
     "avatar_img",
     "spellcasting_section",
+    "combat_section",
 }
 
 
@@ -34,6 +34,10 @@ def render_sheet(context: dict[str, Any]) -> str:
     context = dict(context)
     context["spellcasting_section"] = (
         _render_partial("spellcasting.html", context) if context.get("has_spellcasting") else ""
+    )
+    combat = str(context.get("combat_actions") or "").strip()
+    context["combat_section"] = (
+        f'<div class="ddb-section">\n{combat}\n</div>' if combat else ""
     )
     return _render_partial("sheet.html", context).strip()
 
