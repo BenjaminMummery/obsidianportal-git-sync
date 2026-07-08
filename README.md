@@ -262,7 +262,7 @@ Deploy **this repo** to Render (or similar).
 
 | Setting | Value |
 |---------|--------|
-| Build command | `pip install -r requirements.txt` |
+| Build command | `pip install .` (or `pip install -r requirements.txt` for a flat install without the CLI) |
 | Start command | `uvicorn app:app --host 0.0.0.0 --port $PORT` |
 
 Copy **all** relevant variables from `.env` into the host’s environment settings. At minimum:
@@ -434,21 +434,63 @@ LORE_BRIDGE_API_KEY=...
 ## Daily workflow
 
 ```text
-1. Sync portal → GitHub before editing (curl, Action, or lore_pull.sh).
-2. git pull in your lore repo clone.
-3. Create a branch, edit .textile files (preserve Textile syntax).
-4. Open a PR, review, merge to main.
-5. Webhook (or manual publish Action) pushes merged changes to Obsidian Portal.
+1. Sync portal → GitHub before editing (lore-bridge from-op).
+2. Create a branch, edit .textile files (preserve Textile syntax).
+3. Open a PR, review, merge to main.
+4. Sync to Obsidian Portal (lore-bridge to-op): push main, publish, pull.
 ```
 
-Local pull helper (run from your **lore repo** clone):
+### Lore repo CLI (recommended)
+
+Install the bridge as a dependency in your **lore repo** with [uv](https://docs.astral.sh/uv/):
+
+```toml
+# pyproject.toml in your lore repo
+[project]
+dependencies = [
+  "lore-bridge @ git+https://github.com/YOUR_OWNER/obsidianportal-git-sync.git@feat/cli-package",
+]
+
+[project.scripts]
+# optional: shorter alias in lore repo only
+# lore = "lore_bridge.cli:main"
+```
+
+Add to your lore repo `.env` (see `.env.example` in this repo for bridge-side vars):
+
+```text
+LORE_BRIDGE_URL=https://your-bridge.onrender.com
+LORE_BRIDGE_API_KEY=...
+LORE_GIT_REMOTE=origin
+LORE_GIT_BRANCH=main
+```
+
+From your lore repo clone:
+
+```bash
+set -a && source .env && set +a
+
+# Portal → GitHub, poll bridge progress, fast-forward local clone
+uv run lore-bridge from-op
+
+# Push main, publish GitHub → Portal, poll, fast-forward local clone
+uv run lore-bridge to-op
+
+uv run lore-bridge status
+```
+
+Aliases: `pull` = `from-op`, `publish` = `to-op`.
+
+`to-op` pushes `origin/main` by default (override with `--branch` / `LORE_GIT_BRANCH`). The bridge publishes from GitHub `main`, so merge your PR before running it.
+
+### Shell script fallback
 
 ```bash
 set -a && source .env && set +a
 /path/to/obsidianportal-git-sync/scripts/lore_pull.sh
 ```
 
-That starts an async sync, prints progress every 2 seconds, then runs `git pull --ff-only` when complete.
+From a bridge repo checkout you can run `uv run lore-bridge serve` for local API development.
 
 ---
 
@@ -457,7 +499,9 @@ That starts an async sync, prints progress every 2 seconds, then runs `git pull 
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `LORE_BRIDGE_API_KEY` | Yes | Bearer token for calling the bridge API |
-| `LORE_BRIDGE_URL` | Local/scripts | Deployed bridge base URL (not needed on Render itself) |
+| `LORE_BRIDGE_URL` | Lore repo CLI | Deployed bridge base URL (not needed on Render itself) |
+| `LORE_GIT_REMOTE` | Lore repo CLI | Git remote for `to-op` push (default `origin`) |
+| `LORE_GIT_BRANCH` | Lore repo CLI | Branch for `to-op` push (default `main`; must match bridge `GITHUB_BRANCH`) |
 | `OP_CONSUMER_KEY` | Yes | Obsidian Portal OAuth app key |
 | `OP_CONSUMER_SECRET` | Yes | Obsidian Portal OAuth app secret |
 | `OP_ACCESS_TOKEN` | Yes | OAuth access token |
@@ -613,7 +657,7 @@ Large first syncs still require many Obsidian Portal and GitHub blob API calls, 
 
 | Check | Expected |
 |-------|----------|
-| Build command | `pip install -r requirements.txt` |
+| Build command | `pip install .` (or `pip install -r requirements.txt` for a flat install without the CLI) |
 | Start command | `uvicorn app:app --host 0.0.0.0 --port $PORT` |
 | Python version | 3.11+ |
 
