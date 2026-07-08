@@ -7,3 +7,4 @@ beautifulsoup4==4.12.3
 rapidfuzz==3.11.0
 PyYAML==6.0.2
 typer>=0.15.0
+.
