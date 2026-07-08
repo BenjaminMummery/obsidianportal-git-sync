@@ -20,6 +20,10 @@ _HTML_BLOCK_KEYS = {
     "features_traits",
 }
 
+_RAW_HTML_KEYS = {
+    "avatar_img",
+}
+
 
 def html_text(value: Any) -> str:
     text = str(value or "")
@@ -30,7 +34,9 @@ def render_sheet(context: dict[str, Any]) -> str:
     template = _load_template()
     rendered = template
     for key, value in context.items():
-        if key in _HTML_BLOCK_KEYS:
+        if key in _RAW_HTML_KEYS:
+            rendered = rendered.replace(f"{{{{{key}}}}}", str(value or ""))
+        elif key in _HTML_BLOCK_KEYS:
             rendered = rendered.replace(f"{{{{{key}}}}}", _html_block(value))
         elif key in _PRE_BLOCK_KEYS:
             rendered = rendered.replace(f"{{{{{key}}}}}", _pre_block(value))
