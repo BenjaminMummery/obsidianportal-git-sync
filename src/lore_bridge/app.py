@@ -964,7 +964,8 @@ def rebuild_character_content(
 def op_character_description(ddb_sheet: str, tagline: str) -> str:
     parts: list[str] = []
     if ddb_sheet.strip():
-        parts.append("notextile.\n" + ddb_sheet.strip())
+        # notextile.. (extended block) keeps the full HTML sheet out of Textile processing.
+        parts.append("notextile..\n" + ddb_sheet.strip() + "\np.")
     if tagline.strip():
         if parts:
             parts.append("\n\n")
