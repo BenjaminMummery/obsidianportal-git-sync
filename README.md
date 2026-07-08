@@ -24,8 +24,10 @@ If you watch the bridge repo after a sync, it will look like nothing happened. C
 
 ### Read / lore assistant endpoints
 
-- `GET /search_lore?q=...` — wiki pages only (characters not included yet)
+- `GET /search_lore?q=...` — search wiki pages
 - `GET /get_page?id_or_slug=...` — single wiki page
+- `GET /search_characters?q=...` — search characters
+- `GET /get_character?id_or_slug=...` — single character
 - `GET /recent_changes` — recently updated wiki pages
 - `GET /diff/repo-vs-portal?path=...` — unified diff for one lore-repo file vs portal
 
@@ -46,6 +48,7 @@ All of the above require `Authorization: Bearer <LORE_BRIDGE_API_KEY>`.
   - Reads synced files from GitHub `main`.
   - Detects repo-side changes.
   - Updates or creates Obsidian Portal wiki pages and characters.
+  - Adventure log posts sync `post_title`, `post_tagline`, and `post_time` in frontmatter.
   - Refuses to publish records with detected conflicts.
   - Optional `?async=true` for progress polling.
 
@@ -278,7 +281,7 @@ GITHUB_BRANCH
 GITHUB_AUTHOR_NAME
 GITHUB_AUTHOR_EMAIL
 ALLOW_CREATE_FROM_GIT=true
-ALLOW_DELETE_FROM_GIT=false
+ALLOW_DELETE_FROM_GIT=true
 ```
 
 Optional:
@@ -431,21 +434,15 @@ LORE_BRIDGE_API_KEY=...
 ## Daily workflow
 
 ```text
-1. Sync portal → GitHub before editing (curl, Action, or lore_pull.sh).
-2. git pull in your lore repo clone.
-3. Create a branch, edit .textile files (preserve Textile syntax).
-4. Open a PR, review, merge to main.
-5. Webhook (or manual publish Action) pushes merged changes to Obsidian Portal.
+1. Sync portal → GitHub before editing (lore-bridge from-op).
+2. Create a branch, edit .textile files (preserve Textile syntax).
+3. Open a PR, review, merge to main.
+4. Sync to Obsidian Portal (lore-bridge to-op): push main, publish, pull.
 ```
 
-Local pull helper (run from your **lore repo** clone):
+### Lore repo CLI (recommended)
 
-```bash
-set -a && source .env && set +a
-/path/to/obsidianportal-git-sync/scripts/lore_pull.sh
-```
-
-Or install the bridge as a CLI dependency with [uv](https://docs.astral.sh/uv/):
+Install the bridge as a dependency in your **lore repo** with [uv](https://docs.astral.sh/uv/):
 
 ```toml
 # pyproject.toml in your lore repo
@@ -453,18 +450,47 @@ Or install the bridge as a CLI dependency with [uv](https://docs.astral.sh/uv/):
 dependencies = [
   "lore-bridge @ git+https://github.com/YOUR_OWNER/obsidianportal-git-sync.git@feat/cli-package",
 ]
+
+[project.scripts]
+# optional: shorter alias in lore repo only
+# lore = "lore_bridge.cli:main"
 ```
+
+Add to your lore repo `.env` (see `.env.example` in this repo for bridge-side vars):
+
+```text
+LORE_BRIDGE_URL=https://your-bridge.onrender.com
+LORE_BRIDGE_API_KEY=...
+LORE_GIT_REMOTE=origin
+LORE_GIT_BRANCH=main
+```
+
+From your lore repo clone:
 
 ```bash
 set -a && source .env && set +a
-uv run lore-bridge pull      # portal → GitHub, then git pull --ff-only
-uv run lore-bridge publish   # pull + publish safe changes to portal
-uv run lore-bridge status    # health + last sync timestamps
+
+# Portal → GitHub, poll bridge progress, fast-forward local clone
+uv run lore-bridge from-op
+
+# Push main, publish GitHub → Portal, poll, fast-forward local clone
+uv run lore-bridge to-op
+
+uv run lore-bridge status
 ```
 
-From a bridge repo checkout you can also run `uv run lore-bridge serve` for local API development.
+Aliases: `pull` = `from-op`, `publish` = `to-op`.
 
-That starts an async sync, prints progress every 2 seconds, then runs `git pull --ff-only` when complete.
+`to-op` pushes `origin/main` by default (override with `--branch` / `LORE_GIT_BRANCH`). The bridge publishes from GitHub `main`, so merge your PR before running it.
+
+### Shell script fallback
+
+```bash
+set -a && source .env && set +a
+/path/to/obsidianportal-git-sync/scripts/lore_pull.sh
+```
+
+From a bridge repo checkout you can run `uv run lore-bridge serve` for local API development.
 
 ---
 
@@ -473,7 +499,9 @@ That starts an async sync, prints progress every 2 seconds, then runs `git pull 
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `LORE_BRIDGE_API_KEY` | Yes | Bearer token for calling the bridge API |
-| `LORE_BRIDGE_URL` | Local/scripts | Deployed bridge base URL (not needed on Render itself) |
+| `LORE_BRIDGE_URL` | Lore repo CLI | Deployed bridge base URL (not needed on Render itself) |
+| `LORE_GIT_REMOTE` | Lore repo CLI | Git remote for `to-op` push (default `origin`) |
+| `LORE_GIT_BRANCH` | Lore repo CLI | Branch for `to-op` push (default `main`; must match bridge `GITHUB_BRANCH`) |
 | `OP_CONSUMER_KEY` | Yes | Obsidian Portal OAuth app key |
 | `OP_CONSUMER_SECRET` | Yes | Obsidian Portal OAuth app secret |
 | `OP_ACCESS_TOKEN` | Yes | OAuth access token |
@@ -492,7 +520,11 @@ That starts an async sync, prints progress every 2 seconds, then runs `git pull 
 | `LORE_FILE_EXT` | No | Default `.textile` |
 | `LORE_STATE_PATH` | No | Default `metadata/sync-state.json` |
 | `ALLOW_CREATE_FROM_GIT` | No | Default `true` — new files without `op_id` create portal records |
-| `ALLOW_DELETE_FROM_GIT` | No | Default `false` — deleting a file deletes the portal record |
+| `ALLOW_DELETE_FROM_GIT` | No | Default `true` — deleting a synced `.textile` file on publish removes the portal record (404 on already-deleted records is ignored) |
+
+### Delete sync from Git
+
+When `ALLOW_DELETE_FROM_GIT=true` (default), **deleting a synced file from the lore repo** on publish removes the matching Obsidian Portal wiki page or character. Only affects files previously tracked in `metadata/sync-state.json`. Set to `false` on the bridge if you want updates/creates only.
 | `CACHE_TTL_SECONDS` | No | In-memory OP index cache TTL (default 900) |
 
 ---
@@ -651,6 +683,6 @@ Before reading or editing campaign lore, call the bridge's sync_from_portal oper
 - Publish pulls portal state before pushing Git changes; concurrent edits on the same page in both places need manual care.
 - The bridge stores GM-only info in the repo. Use a private repo if you sync GM-only pages or characters.
 - Character avatars are not synced; only text fields and dynamic sheet JSON are mirrored.
-- Obsidian Portal **items** do not have a public API endpoint and cannot be synced.
-- Read/search API endpoints cover wiki pages only, not characters.
+- Obsidian Portal **items** have no public API ([official API docs](https://help.obsidianportal.com/article/82-api-overview) cover wiki pages and characters only) and cannot be synced.
+- Read/search for characters uses `/search_characters` and `/get_character`; `/recent_changes` is still wiki-only.
 - Async job status is in-memory only; redeploy/restart clears job history.
