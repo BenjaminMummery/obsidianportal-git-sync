@@ -6,7 +6,6 @@ from importlib import resources
 from typing import Any
 
 _PRE_BLOCK_KEYS = {
-    "saving_throws",
     "skills",
     "proficiencies",
     "languages",
@@ -22,6 +21,7 @@ _HTML_BLOCK_KEYS = {
 
 _RAW_HTML_KEYS = {
     "avatar_img",
+    "spellcasting_section",
 }
 
 
@@ -31,8 +31,22 @@ def html_text(value: Any) -> str:
 
 
 def render_sheet(context: dict[str, Any]) -> str:
-    template = _load_template()
-    rendered = template
+    context = dict(context)
+    context["spellcasting_section"] = (
+        _render_partial("spellcasting.html", context) if context.get("has_spellcasting") else ""
+    )
+    return _render_partial("sheet.html", context).strip()
+
+
+def render_gm_features(context: dict[str, Any]) -> str:
+    features = str(context.get("features_traits") or "").strip()
+    if not features or features == "—":
+        return ""
+    return _render_partial("gm-features.html", context).strip()
+
+
+def _render_partial(template_name: str, context: dict[str, Any]) -> str:
+    rendered = _load_template(template_name)
     for key, value in context.items():
         if key in _RAW_HTML_KEYS:
             rendered = rendered.replace(f"{{{{{key}}}}}", str(value or ""))
@@ -43,7 +57,7 @@ def render_sheet(context: dict[str, Any]) -> str:
         else:
             rendered = rendered.replace(f"{{{{{key}}}}}", html_text(value))
     rendered = re.sub(r"\{\{[a-z_]+\}\}", "", rendered)
-    return rendered.strip()
+    return rendered
 
 
 def _pre_block(value: Any) -> str:
@@ -60,6 +74,10 @@ def _html_block(value: Any) -> str:
     return text.replace("\n", "<br>\n")
 
 
-@lru_cache(maxsize=1)
-def _load_template() -> str:
-    return resources.files("lore_bridge.dndbeyond").joinpath("templates/sheet.html").read_text(encoding="utf-8")
+@lru_cache(maxsize=8)
+def _load_template(template_name: str) -> str:
+    return (
+        resources.files("lore_bridge.dndbeyond")
+        .joinpath("templates", template_name)
+        .read_text(encoding="utf-8")
+    )

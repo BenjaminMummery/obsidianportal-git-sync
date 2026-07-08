@@ -4,8 +4,9 @@ from datetime import datetime, timezone
 from typing import Any
 
 from lore_bridge.dndbeyond.fetch import DdbFetchError, fetch_character
+from lore_bridge.dndbeyond.gm import merge_ddb_gm_features
 from lore_bridge.dndbeyond.mapper import map_character
-from lore_bridge.dndbeyond.render import render_sheet
+from lore_bridge.dndbeyond.render import render_gm_features, render_sheet
 
 
 class DdbSyncResult:
@@ -83,6 +84,10 @@ def sync_from_dndbeyond_impl(
             synced_at = datetime.now(timezone.utc)
             sheet_data = map_character(data, synced_at=synced_at)
             ddb_sheet = render_sheet(sheet_data)
+            gm_info = merge_ddb_gm_features(
+                parsed.get("gm_info") or "",
+                render_gm_features(sheet_data),
+            )
             fm = dict(fm)
             fm["dndbeyond_synced_at"] = synced_at.strftime("%Y-%m-%dT%H:%M:%SZ")
             if not fm.get("dndbeyond_url"):
@@ -92,7 +97,7 @@ def sync_from_dndbeyond_impl(
                 ddb_sheet=ddb_sheet,
                 description=parsed.get("description") or "",
                 bio=parsed.get("bio") or "",
-                gm_info=parsed.get("gm_info") or "",
+                gm_info=gm_info,
             )
         except DdbFetchError as exc:
             errors.append({"path": path, "dndbeyond_id": str(ddb_id), "detail": str(exc)})

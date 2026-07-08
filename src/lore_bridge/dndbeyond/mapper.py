@@ -65,6 +65,9 @@ def map_character(data: dict[str, Any], *, synced_at: datetime | None = None) ->
     spell_mod = _ability_mod(scores[STAT_IDS.get(spell_ability_id or 4, "int")])
     spell_save_dc = str(8 + prof + spell_mod) if spell_ability_id else ""
     spell_attack = _signed(prof + spell_mod) if spell_ability_id else ""
+    spell_slots = _spell_slots(data, level)
+    spells_prepared = _spells_prepared(data)
+    has_spellcasting = bool(spell_ability_id) and (spell_slots != "—" or spells_prepared != "—")
 
     synced = synced_at or datetime.now(timezone.utc)
     sync_label = synced.strftime("%Y-%m-%d %H:%M UTC")
@@ -94,7 +97,12 @@ def map_character(data: dict[str, Any], *, synced_at: datetime | None = None) ->
         "int": _ability_line(scores["int"]),
         "wis": _ability_line(scores["wis"]),
         "cha": _ability_line(scores["cha"]),
-        "saving_throws": _saving_throws(scores, prof, mods),
+        "str_save": _save_value("str", scores, prof, mods),
+        "dex_save": _save_value("dex", scores, prof, mods),
+        "con_save": _save_value("con", scores, prof, mods),
+        "int_save": _save_value("int", scores, prof, mods),
+        "wis_save": _save_value("wis", scores, prof, mods),
+        "cha_save": _save_value("cha", scores, prof, mods),
         "skills": _skills(scores, prof, mods),
         "passive_perception": str(10 + _skill_bonus("perception", scores, prof, mods)),
         "passive_investigation": str(10 + _skill_bonus("investigation", scores, prof, mods)),
@@ -109,8 +117,9 @@ def map_character(data: dict[str, Any], *, synced_at: datetime | None = None) ->
         "spellcasting_ability": STAT_IDS.get(spell_ability_id or 0, "int"),
         "spell_save_dc": spell_save_dc,
         "spell_attack": spell_attack,
-        "spell_slots": _spell_slots(data, level),
-        "spells_prepared": _spells_prepared(data),
+        "spell_slots": spell_slots,
+        "spells_prepared": spells_prepared,
+        "has_spellcasting": has_spellcasting,
         "ddb_last_sync": sync_label,
         "avatar_url": avatar_url,
         "avatar_img": f'<img src="{html_text(avatar_url)}" alt="">' if avatar_url else "",
@@ -283,28 +292,23 @@ def _skill_bonus(skill: str, scores: dict[str, int], prof: int, mods: list[dict[
     return bonus
 
 
-def _saving_throws(scores: dict[str, int], prof: int, mods: list[dict[str, Any]]) -> str:
-    lines: list[str] = []
-    for key, label in STAT_LABELS.items():
-        bonus = _ability_mod(scores[key])
-        if _has_proficiency(mods, f"{key}-saving-throws"):
-            bonus += prof
-            mark = " *"
-        else:
-            mark = ""
-        lines.append(f"{label} {_signed(bonus)}{mark}")
-    return "\n".join(lines)
+def _save_value(key: str, scores: dict[str, int], prof: int, mods: list[dict[str, Any]]) -> str:
+    bonus = _ability_mod(scores[key])
+    proficient = _has_proficiency(mods, f"{key}-saving-throws")
+    if proficient:
+        bonus += prof
+    mark = " *" if proficient else ""
+    return f"{_signed(bonus)}{mark}"
 
 
 def _skills(scores: dict[str, int], prof: int, mods: list[dict[str, Any]]) -> str:
     lines: list[str] = []
-    for skill, ability in SKILLS.items():
-        if not (_has_proficiency(mods, skill) or _has_expertise(mods, skill)):
-            continue
+    for skill in SKILLS:
         bonus = _skill_bonus(skill, scores, prof, mods)
-        mark = " *" if _has_proficiency(mods, skill) or _has_expertise(mods, skill) else ""
+        proficient = _has_proficiency(mods, skill) or _has_expertise(mods, skill)
+        mark = " *" if proficient else ""
         lines.append(f"{SKILL_LABELS[skill]} {_signed(bonus)}{mark}")
-    return "\n".join(lines) if lines else "—"
+    return "\n".join(lines)
 
 
 def _actions(data: dict[str, Any], scores: dict[str, int], prof: int, mods: list[dict[str, Any]]) -> str:

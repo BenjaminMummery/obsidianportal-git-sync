@@ -39,12 +39,19 @@
         <div class="ddb-ability"><span class="ddb-ability-label">CHA</span><span class="ddb-ability-value">{{cha}}</span></div>
       </div>
       <h3 class="ddb-subsection-title">Saving Throws</h3>
-      <div class="ddb-block">{{saving_throws}}</div>
+      <div class="ddb-ability-grid">
+        <div class="ddb-ability"><span class="ddb-ability-label">STR</span><span class="ddb-ability-value">{{str_save}}</span></div>
+        <div class="ddb-ability"><span class="ddb-ability-label">DEX</span><span class="ddb-ability-value">{{dex_save}}</span></div>
+        <div class="ddb-ability"><span class="ddb-ability-label">CON</span><span class="ddb-ability-value">{{con_save}}</span></div>
+        <div class="ddb-ability"><span class="ddb-ability-label">INT</span><span class="ddb-ability-value">{{int_save}}</span></div>
+        <div class="ddb-ability"><span class="ddb-ability-label">WIS</span><span class="ddb-ability-value">{{wis_save}}</span></div>
+        <div class="ddb-ability"><span class="ddb-ability-label">CHA</span><span class="ddb-ability-value">{{cha_save}}</span></div>
+      </div>
     </div>
 
     <div class="ddb-section">
       <h2 class="ddb-section-title">Skills &amp; Senses</h2>
-      <div class="ddb-block">{{skills}}</div>
+      <div class="ddb-block ddb-skills">{{skills}}</div>
       <div class="ddb-sense-row">
         <div><span class="ddb-sense-label">Passive Perception</span><span class="ddb-sense-value">{{passive_perception}}</span></div>
         <div><span class="ddb-sense-label">Passive Investigation</span><span class="ddb-sense-value">{{passive_investigation}}</span></div>
@@ -58,29 +65,14 @@
     <div class="ddb-block">{{actions}}</div>
   </div>
 
-  <div class="ddb-section">
-    <h2 class="ddb-section-title">Features &amp; Traits</h2>
-    <div class="ddb-block">{{features_traits}}</div>
-  </div>
-
-  <div class="ddb-section">
-    <h2 class="ddb-section-title">Proficiencies &amp; Training</h2>
-    <div class="ddb-kv"><span class="ddb-label">Proficiencies</span><span class="ddb-kv-value">{{proficiencies}}</span></div>
-    <div class="ddb-kv"><span class="ddb-label">Languages</span><span class="ddb-kv-value">{{languages}}</span></div>
-    <div class="ddb-kv"><span class="ddb-label">Tools</span><span class="ddb-kv-value">{{tools}}</span></div>
-  </div>
-
-  <div class="ddb-section">
-    <h2 class="ddb-section-title">Spellcasting</h2>
-    <div class="ddb-spell-header">
-      <div><span class="ddb-label">Ability</span> {{spellcasting_ability}}</div>
-      <div><span class="ddb-label">Save DC</span> {{spell_save_dc}}</div>
-      <div><span class="ddb-label">Attack</span> {{spell_attack}}</div>
+  <div class="ddb-columns ddb-bottom-row">
+    <div class="ddb-section ddb-half">
+      <h2 class="ddb-section-title">Proficiencies &amp; Training</h2>
+      <div class="ddb-kv"><span class="ddb-label">Proficiencies</span><span class="ddb-kv-value">{{proficiencies}}</span></div>
+      <div class="ddb-kv"><span class="ddb-label">Languages</span><span class="ddb-kv-value">{{languages}}</span></div>
+      <div class="ddb-kv"><span class="ddb-label">Tools</span><span class="ddb-kv-value">{{tools}}</span></div>
     </div>
-    <h3 class="ddb-subsection-title">Spell Slots</h3>
-    <div class="ddb-block">{{spell_slots}}</div>
-    <h3 class="ddb-subsection-title">Spells Prepared / Known</h3>
-    <div class="ddb-block">{{spells_prepared}}</div>
+    {{spellcasting_section}}
   </div>
 
   <div class="ddb-footer">

@@ -163,9 +163,26 @@
   gap: 0.85rem;
 }
 
+.ddb-sheet .ddb-bottom-row > .ddb-section:only-child {
+  grid-column: span 1;
+}
+
+.ddb-sheet .ddb-block.ddb-skills {
+  column-count: 2;
+  column-gap: 1.25rem;
+}
+
+.ddb-sheet .ddb-sheet-gm {
+  margin-bottom: 1rem;
+}
+
 @media (max-width: 720px) {
   .ddb-sheet .ddb-columns {
     grid-template-columns: 1fr;
+  }
+
+  .ddb-sheet .ddb-block.ddb-skills {
+    column-count: 1;
   }
 
   .ddb-sheet .ddb-header {
