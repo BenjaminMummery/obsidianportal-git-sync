@@ -40,6 +40,14 @@ SKILLS: dict[str, str] = {
     "survival": "wis",
 }
 SKILL_LABELS = {key: key.replace("-", " ").title() for key in SKILLS}
+SAVE_SUBTYPES = {
+    "str": "strength-saving-throws",
+    "dex": "dexterity-saving-throws",
+    "con": "constitution-saving-throws",
+    "int": "intelligence-saving-throws",
+    "wis": "wisdom-saving-throws",
+    "cha": "charisma-saving-throws",
+}
 
 
 def map_character(data: dict[str, Any], *, synced_at: datetime | None = None) -> dict[str, str]:
@@ -294,7 +302,7 @@ def _skill_bonus(skill: str, scores: dict[str, int], prof: int, mods: list[dict[
 
 def _save_value(key: str, scores: dict[str, int], prof: int, mods: list[dict[str, Any]]) -> str:
     bonus = _ability_mod(scores[key])
-    proficient = _has_proficiency(mods, f"{key}-saving-throws")
+    proficient = _has_proficiency(mods, SAVE_SUBTYPES[key])
     if proficient:
         bonus += prof
     mark = " *" if proficient else ""
