@@ -1,0 +1,105 @@
+<div class="ddb-sheet">
+  <header class="ddb-header">
+    <div class="ddb-header-main">
+      <h1 class="ddb-name">{{name}}</h1>
+      <p class="ddb-subtitle">{{class_summary}}</p>
+      <ul class="ddb-meta">
+        <li><span class="ddb-label">Race</span> {{race}}</li>
+        <li><span class="ddb-label">Background</span> {{background}}</li>
+        <li><span class="ddb-label">Alignment</span> {{alignment}}</li>
+        <li><span class="ddb-label">Proficiency</span> {{prof_bonus}}</li>
+        <li><span class="ddb-label">Inspiration</span> {{inspiration}}</li>
+      </ul>
+      <p class="ddb-links">{{player_campaign}}</p>
+    </div>
+    <div class="ddb-avatar-wrap">{{avatar_img}}</div>
+  </header>
+
+  <section class="ddb-section ddb-defenses">
+    <h2 class="ddb-section-title">Defenses</h2>
+    <div class="ddb-pill-grid">
+      <div class="ddb-pill"><span class="ddb-pill-label">AC</span><span class="ddb-pill-value">{{ac}}</span></div>
+      <div class="ddb-pill ddb-pill-wide">
+        <span class="ddb-pill-label">HP</span>
+        <span class="ddb-pill-value">{{hp_current}}</span>
+        <span class="ddb-pill-sep">/</span>
+        <span class="ddb-pill-value">{{hp_max}}</span>
+      </div>
+      <div class="ddb-pill"><span class="ddb-pill-label">Temp</span><span class="ddb-pill-value">{{temp_hp}}</span></div>
+      <div class="ddb-pill"><span class="ddb-pill-label">Speed</span><span class="ddb-pill-value">{{speed}}</span></div>
+      <div class="ddb-pill"><span class="ddb-pill-label">Init</span><span class="ddb-pill-value">{{initiative}}</span></div>
+      <div class="ddb-pill"><span class="ddb-pill-label">Hit Dice</span><span class="ddb-pill-value">{{hit_dice}}</span></div>
+    </div>
+  </section>
+
+  <div class="ddb-columns">
+    <section class="ddb-section">
+      <h2 class="ddb-section-title">Abilities</h2>
+      <div class="ddb-ability-grid">
+        <div class="ddb-ability"><span class="ddb-ability-label">STR</span><span class="ddb-ability-value">{{str}}</span></div>
+        <div class="ddb-ability"><span class="ddb-ability-label">DEX</span><span class="ddb-ability-value">{{dex}}</span></div>
+        <div class="ddb-ability"><span class="ddb-ability-label">CON</span><span class="ddb-ability-value">{{con}}</span></div>
+        <div class="ddb-ability"><span class="ddb-ability-label">INT</span><span class="ddb-ability-value">{{int}}</span></div>
+        <div class="ddb-ability"><span class="ddb-ability-label">WIS</span><span class="ddb-ability-value">{{wis}}</span></div>
+        <div class="ddb-ability"><span class="ddb-ability-label">CHA</span><span class="ddb-ability-value">{{cha}}</span></div>
+      </div>
+      <h3 class="ddb-subsection-title">Saving Throws</h3>
+      <div class="ddb-block">{{saving_throws}}</div>
+    </section>
+
+    <section class="ddb-section">
+      <h2 class="ddb-section-title">Skills &amp; Senses</h2>
+      <div class="ddb-block">{{skills}}</div>
+      <div class="ddb-sense-row">
+        <div><span class="ddb-sense-label">Passive Perception</span><span class="ddb-sense-value">{{passive_perception}}</span></div>
+        <div><span class="ddb-sense-label">Passive Investigation</span><span class="ddb-sense-value">{{passive_investigation}}</span></div>
+        <div><span class="ddb-sense-label">Passive Insight</span><span class="ddb-sense-value">{{passive_insight}}</span></div>
+      </div>
+    </section>
+  </div>
+
+  <section class="ddb-section">
+    <h2 class="ddb-section-title">Actions</h2>
+    <div class="ddb-block">{{actions}}</div>
+  </section>
+
+  <section class="ddb-section">
+    <h2 class="ddb-section-title">Limited Use</h2>
+    <div class="ddb-block">{{limited_use}}</div>
+  </section>
+
+  <section class="ddb-section">
+    <h2 class="ddb-section-title">Features &amp; Traits</h2>
+    <div class="ddb-block">{{features_traits}}</div>
+  </section>
+
+  <section class="ddb-section">
+    <h2 class="ddb-section-title">Proficiencies &amp; Training</h2>
+    <div class="ddb-kv"><span class="ddb-label">Proficiencies</span><span class="ddb-kv-value">{{proficiencies}}</span></div>
+    <div class="ddb-kv"><span class="ddb-label">Languages</span><span class="ddb-kv-value">{{languages}}</span></div>
+    <div class="ddb-kv"><span class="ddb-label">Tools</span><span class="ddb-kv-value">{{tools}}</span></div>
+  </section>
+
+  <section class="ddb-section">
+    <h2 class="ddb-section-title">Inventory</h2>
+    <div class="ddb-block">{{equipment}}</div>
+  </section>
+
+  <section class="ddb-section">
+    <h2 class="ddb-section-title">Spellcasting</h2>
+    <div class="ddb-spell-header">
+      <div><span class="ddb-label">Ability</span> {{spellcasting_ability}}</div>
+      <div><span class="ddb-label">Save DC</span> {{spell_save_dc}}</div>
+      <div><span class="ddb-label">Attack</span> {{spell_attack}}</div>
+    </div>
+    <h3 class="ddb-subsection-title">Spell Slots</h3>
+    <div class="ddb-block">{{spell_slots}}</div>
+    <h3 class="ddb-subsection-title">Spells Prepared / Known</h3>
+    <div class="ddb-block">{{spells_prepared}}</div>
+  </section>
+
+  <footer class="ddb-footer">
+    <p class="ddb-sync"><span class="ddb-label">D&amp;D Beyond sync</span> {{ddb_last_sync}}</p>
+    <p class="ddb-disclaimer">Unofficial fan layout inspired by digital character sheet sections. Not affiliated with Wizards of the Coast or D&amp;D Beyond.</p>
+  </footer>
+</div>

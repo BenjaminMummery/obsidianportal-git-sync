@@ -1,0 +1,265 @@
+/* D&D Beyond-style character sheet HTML (paste into Obsidian Portal campaign Custom CSS) */
+
+.ddb-sheet {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.45;
+  color: #1a202c;
+  max-width: 920px;
+  margin: 0 auto;
+}
+
+.ddb-sheet .ddb-header {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  padding: 1rem 1.1rem;
+  background: linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%);
+  border-radius: 10px;
+  color: #fff;
+}
+
+.ddb-sheet .ddb-header-main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.ddb-sheet .ddb-name {
+  margin: 0 0 0.15rem;
+  font-size: 1.65rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.ddb-sheet .ddb-subtitle {
+  margin: 0 0 0.65rem;
+  font-size: 1.05rem;
+  opacity: 0.95;
+}
+
+.ddb-sheet .ddb-meta {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1rem;
+}
+
+.ddb-sheet .ddb-meta li {
+  margin: 0;
+}
+
+.ddb-sheet .ddb-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #64748b;
+  margin-right: 0.25rem;
+}
+
+.ddb-sheet .ddb-header .ddb-label {
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.ddb-sheet .ddb-links {
+  margin: 0.75rem 0 0;
+  font-size: 0.85rem;
+  opacity: 0.9;
+}
+
+.ddb-sheet .ddb-avatar-wrap {
+  flex: 0 0 120px;
+}
+
+.ddb-sheet .ddb-avatar-wrap img {
+  display: block;
+  width: 120px;
+  height: 120px;
+  border: 2px solid rgba(255, 255, 255, 0.5);
+  border-radius: 8px;
+}
+
+.ddb-sheet .ddb-section {
+  margin-bottom: 0.85rem;
+  padding: 0.85rem 1rem;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.ddb-sheet .ddb-section-title {
+  margin: 0 0 0.65rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #334155;
+  border-bottom: 2px solid #e2e8f0;
+  padding-bottom: 0.35rem;
+}
+
+.ddb-sheet .ddb-subsection-title {
+  margin: 0.75rem 0 0.35rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.ddb-sheet .ddb-pill-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(88px, 1fr));
+  gap: 0.5rem;
+}
+
+.ddb-sheet .ddb-pill {
+  padding: 0.45rem 0.55rem;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  text-align: center;
+}
+
+.ddb-sheet .ddb-pill-wide {
+  grid-column: span 2;
+}
+
+.ddb-sheet .ddb-pill-label {
+  display: block;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #64748b;
+  margin-bottom: 0.15rem;
+}
+
+.ddb-sheet .ddb-pill-value {
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+
+.ddb-sheet .ddb-pill-sep {
+  margin: 0 0.15rem;
+  font-weight: 700;
+  color: #94a3b8;
+}
+
+.ddb-sheet .ddb-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.85rem;
+}
+
+@media (max-width: 720px) {
+  .ddb-sheet .ddb-columns {
+    grid-template-columns: 1fr;
+  }
+
+  .ddb-sheet .ddb-header {
+    flex-direction: column-reverse;
+  }
+
+  .ddb-sheet .ddb-avatar-wrap {
+    align-self: flex-start;
+  }
+}
+
+.ddb-sheet .ddb-ability-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.45rem;
+}
+
+.ddb-sheet .ddb-ability {
+  padding: 0.45rem;
+  text-align: center;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+
+.ddb-sheet .ddb-ability-label {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #64748b;
+}
+
+.ddb-sheet .ddb-ability-value {
+  display: block;
+  margin-top: 0.15rem;
+  font-weight: 700;
+}
+
+.ddb-sheet .ddb-block {
+  padding: 0.55rem 0.65rem;
+  background: #f8fafc;
+  border: 1px solid #edf2f7;
+  border-radius: 8px;
+}
+
+.ddb-sheet .ddb-sense-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+  margin-top: 0.65rem;
+}
+
+.ddb-sheet .ddb-sense-row div {
+  padding: 0.45rem;
+  background: #f8fafc;
+  border: 1px solid #edf2f7;
+  border-radius: 8px;
+  text-align: center;
+}
+
+.ddb-sheet .ddb-sense-label {
+  display: block;
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #64748b;
+  margin-bottom: 0.15rem;
+}
+
+.ddb-sheet .ddb-sense-value {
+  font-weight: 700;
+}
+
+.ddb-sheet .ddb-kv {
+  margin-bottom: 0.55rem;
+}
+
+.ddb-sheet .ddb-kv:last-child {
+  margin-bottom: 0;
+}
+
+.ddb-sheet .ddb-spell-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.25rem;
+  margin-bottom: 0.35rem;
+}
+
+.ddb-sheet .ddb-footer {
+  margin-top: 0.5rem;
+  padding: 0.65rem 0.2rem;
+  font-size: 0.78rem;
+  color: #64748b;
+}
+
+.ddb-sheet .ddb-footer p {
+  margin: 0.2rem 0;
+}
+
+.ddb-sheet .ddb-disclaimer {
+  font-style: italic;
+}
+
+/* Optional: hide OP's "Description" header above the injected sheet */
+#character-details > div.description > h6 {
+  display: none;
+}
