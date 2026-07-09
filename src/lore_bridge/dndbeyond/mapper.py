@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import ast
 import json
+import math
+import operator
 import re
 from datetime import datetime, timezone
 from typing import Any
@@ -9,6 +12,14 @@ from lore_bridge.dndbeyond.render import html_text
 
 STAT_IDS = {1: "str", 2: "dex", 3: "con", 4: "int", 5: "wis", 6: "cha"}
 STAT_LABELS = {"str": "STR", "dex": "DEX", "con": "CON", "int": "INT", "wis": "WIS", "cha": "CHA"}
+STAT_FULL_NAMES = {
+    "str": "Strength",
+    "dex": "Dexterity",
+    "con": "Constitution",
+    "int": "Intelligence",
+    "wis": "Wisdom",
+    "cha": "Charisma",
+}
 ALIGNMENTS = {
     1: "Lawful Good",
     2: "Neutral Good",
@@ -49,6 +60,17 @@ SAVE_SUBTYPES = {
     "wis": "wisdom-saving-throws",
     "cha": "charisma-saving-throws",
 }
+ACTIVATION_TYPE_LABELS = {
+    1: "action",
+    2: "action",
+    3: "bonus action",
+    4: "reaction",
+    5: "minute",
+    6: "hour",
+    7: "special",
+    8: "hour",
+}
+SPELL_COMPONENT_LABELS = {1: "V", 2: "S", 3: "M"}
 
 
 def map_dynamic_sheet(data: dict[str, Any], *, synced_at: datetime | None = None) -> dict[str, str]:
@@ -87,6 +109,7 @@ def map_dynamic_sheet(data: dict[str, Any], *, synced_at: datetime | None = None
         "wis_save": sheet["wis_save"],
         "cha_save": sheet["cha_save"],
         "skills": _skills_by_ability(scores, prof, mods, html=False),
+        "ability_blocks_json": _ability_blocks_json(scores, prof, mods),
         "passive_perception": sheet["passive_perception"],
         "passive_investigation": sheet["passive_investigation"],
         "passive_insight": sheet["passive_insight"],
@@ -106,6 +129,8 @@ def map_dynamic_sheet(data: dict[str, Any], *, synced_at: datetime | None = None
         "spell_save_dc": "",
         "spell_attack": "",
         "spell_slots": "",
+        "spell_slots_json": "[]",
+        "spell_slots_used_json": "{}",
         "spells_prepared": "",
         "spells_json": "[]",
     }
@@ -115,6 +140,8 @@ def map_dynamic_sheet(data: dict[str, Any], *, synced_at: datetime | None = None
         result["spell_save_dc"] = sheet["spell_save_dc"]
         result["spell_attack"] = sheet["spell_attack"]
         result["spell_slots"] = sheet["spell_slots"]
+        result["spell_slots_json"] = _spell_slots_json(data, _total_level(data))
+        result["spell_slots_used_json"] = _spell_slots_used_json(data, _total_level(data))
         result["spells_prepared"] = sheet["spells_prepared"]
         result["spells_json"] = sheet["spells_json"]
 
@@ -393,6 +420,40 @@ def _skills(scores: dict[str, int], prof: int, mods: list[dict[str, Any]]) -> st
     return "\n".join(lines)
 
 
+def _ability_blocks_json(scores: dict[str, int], prof: int, mods: list[dict[str, Any]]) -> str:
+    blocks: list[dict[str, Any]] = []
+    for stat_key in ("str", "dex", "con", "int", "wis", "cha"):
+        save_bonus = _ability_mod(scores[stat_key])
+        save_proficient = _has_proficiency(mods, SAVE_SUBTYPES[stat_key])
+        if save_proficient:
+            save_bonus += prof
+        skills: list[dict[str, Any]] = []
+        for skill, ability in SKILLS.items():
+            if ability != stat_key:
+                continue
+            expertise = _has_expertise(mods, skill)
+            proficient = expertise or _has_proficiency(mods, skill)
+            skills.append(
+                {
+                    "name": SKILL_LABELS[skill],
+                    "bonus": _signed(_skill_bonus(skill, scores, prof, mods)),
+                    "proficient": proficient,
+                    "expertise": expertise,
+                }
+            )
+        blocks.append(
+            {
+                "key": stat_key,
+                "label": STAT_FULL_NAMES[stat_key],
+                "score": scores[stat_key],
+                "modifier": _signed(_ability_mod(scores[stat_key])),
+                "save": {"bonus": _signed(save_bonus), "proficient": save_proficient},
+                "skills": skills,
+            }
+        )
+    return json.dumps(blocks, ensure_ascii=False)
+
+
 def _skills_by_ability(scores: dict[str, int], prof: int, mods: list[dict[str, Any]], *, html: bool) -> str:
     parts: list[str] = []
     for stat_key in ("str", "dex", "con", "int", "wis", "cha"):
@@ -491,8 +552,8 @@ def _activation_bucket(action: dict[str, Any]) -> str:
     return "actions"
 
 
-def _action_detail_line(action: dict[str, Any]) -> str:
-    snippet = _clean_snippet(action.get("snippet") or action.get("description") or "")
+def _action_detail_line(action: dict[str, Any], data: dict[str, Any]) -> str:
+    snippet = _snippet_from_fields(action.get("snippet") or "", action.get("description") or "", data=data)
     name = action.get("name") or "Action"
     if snippet:
         return _named_detail_line(name, snippet)
@@ -541,10 +602,10 @@ def _combat_actions(data: dict[str, Any], scores: dict[str, int], prof: int) -> 
             if not group:
                 continue
             for action in group:
-                buckets[_activation_bucket(action)].append(_action_detail_line(action))
+                buckets[_activation_bucket(action)].append(_action_detail_line(action, data))
 
     for action in data.get("customActions") or []:
-        buckets[_activation_bucket(action)].append(_action_detail_line(action))
+        buckets[_activation_bucket(action)].append(_action_detail_line(action, data))
 
     titles = {
         "actions": "Actions",
@@ -576,7 +637,11 @@ def _limited_use(data: dict[str, Any]) -> str:
                 limited = action.get("limitedUse") or {}
                 if not limited.get("maxUses"):
                     continue
-                snippet = _clean_snippet(action.get("snippet") or action.get("description") or "")
+                snippet = _snippet_from_fields(
+                    action.get("snippet") or "",
+                    action.get("description") or "",
+                    data=data,
+                )
                 reset = {1: "short rest", 2: "long rest", 3: "day", 4: "none"}.get(limited.get("resetType") or 0, "rest")
                 name = action.get("name") or "Feature"
                 line = f"{name} ({limited.get('maxUses')}/{reset})"
@@ -590,7 +655,12 @@ def _features(data: dict[str, Any], level: int) -> str:
     lines: list[str] = []
     for trait in ((data.get("race") or {}).get("racialTraits") or []):
         definition = trait.get("definition") or {}
-        snippet = _clean_snippet(definition.get("snippet") or definition.get("description") or "")
+        snippet = _snippet_from_fields(
+            definition.get("snippet") or "",
+            definition.get("description") or "",
+            data=data,
+            level_scales=definition.get("levelScales"),
+        )
         name = definition.get("name") or "Trait"
         lines.append(_named_detail_line(name, snippet))
     for cls in data.get("classes") or []:
@@ -599,13 +669,23 @@ def _features(data: dict[str, Any], level: int) -> str:
             required = definition.get("requiredLevel") or 0
             if required and level < required:
                 continue
-            snippet = _clean_snippet(definition.get("snippet") or definition.get("description") or "")
+            snippet = _snippet_from_fields(
+                definition.get("snippet") or "",
+                definition.get("description") or "",
+                data=data,
+                level_scales=definition.get("levelScales"),
+            )
             name = definition.get("name") or "Feature"
             if snippet or name:
                 lines.append(_named_detail_line(name, snippet))
     for feat in data.get("feats") or []:
         definition = feat.get("definition") or {}
-        snippet = _clean_snippet(definition.get("snippet") or definition.get("description") or "")
+        snippet = _snippet_from_fields(
+            definition.get("snippet") or "",
+            definition.get("description") or "",
+            data=data,
+            level_scales=definition.get("levelScales"),
+        )
         name = definition.get("name") or "Feat"
         lines.append(_named_detail_line(name, snippet))
     return "\n".join(lines) if lines else "—"
@@ -752,6 +832,109 @@ def _spell_slots(data: dict[str, Any], level: int) -> str:
     return "\n".join(lines) if lines else "—"
 
 
+def _spell_slots_json(data: dict[str, Any], level: int) -> str:
+    usage = {
+        int(slot["level"]): slot
+        for slot in (data.get("spellSlots") or [])
+        if slot.get("level") is not None
+    }
+    maxes = _spell_slot_table_maxes(data)
+    if not maxes:
+        rules = None
+        for cls in data.get("classes") or []:
+            definition = cls.get("definition") or {}
+            if definition.get("canCastSpells"):
+                rules = definition.get("spellRules") or {}
+                break
+        slot_table = (rules or {}).get("levelSpellSlots") or []
+        slot_maxes = slot_table[level] if level < len(slot_table) else []
+        for idx, max_slots in enumerate(slot_maxes or [], start=1):
+            if max_slots:
+                maxes[idx] = max_slots
+
+    entries: list[dict[str, Any]] = []
+    levels = sorted(set(maxes) | {lvl for lvl, slot in usage.items() if (slot.get("used") or 0) > 0})
+    for lvl in levels:
+        max_slots = maxes.get(lvl, 0)
+        used = int((usage.get(lvl) or {}).get("used") or 0)
+        if not max_slots:
+            available = int((usage.get(lvl) or {}).get("available") or 0)
+            max_slots = used + available
+        if not max_slots:
+            continue
+        entries.append(
+            {
+                "level": lvl,
+                "label": f"{lvl}{_ordinal_suffix(lvl)}",
+                "max": max_slots,
+            }
+        )
+
+    for slot in data.get("pactMagic") or []:
+        lvl = int(slot.get("level") or 0)
+        if lvl != 1:
+            continue
+        max_slots = int(slot.get("available") or 0) + int(slot.get("used") or 0)
+        if not max_slots:
+            continue
+        entries.append(
+            {
+                "level": 0,
+                "label": "Pact",
+                "max": max_slots,
+            }
+        )
+
+    return json.dumps(entries, ensure_ascii=False) if entries else "[]"
+
+
+def _spell_slots_used_json(data: dict[str, Any], level: int) -> str:
+    usage = {
+        int(slot["level"]): slot
+        for slot in (data.get("spellSlots") or [])
+        if slot.get("level") is not None
+    }
+    maxes = _spell_slot_table_maxes(data)
+    if not maxes:
+        rules = None
+        for cls in data.get("classes") or []:
+            definition = cls.get("definition") or {}
+            if definition.get("canCastSpells"):
+                rules = definition.get("spellRules") or {}
+                break
+        slot_table = (rules or {}).get("levelSpellSlots") or []
+        slot_maxes = slot_table[level] if level < len(slot_table) else []
+        for idx, max_slots in enumerate(slot_maxes or [], start=1):
+            if max_slots:
+                maxes[idx] = max_slots
+
+    used_map: dict[str, int] = {}
+    levels = sorted(set(maxes) | {lvl for lvl, slot in usage.items() if (slot.get("used") or 0) > 0})
+    for lvl in levels:
+        max_slots = maxes.get(lvl, 0)
+        used = int((usage.get(lvl) or {}).get("used") or 0)
+        if not max_slots:
+            available = int((usage.get(lvl) or {}).get("available") or 0)
+            max_slots = used + available
+        if not max_slots:
+            continue
+        if used:
+            used_map[str(lvl)] = used
+
+    for slot in data.get("pactMagic") or []:
+        lvl = int(slot.get("level") or 0)
+        if lvl != 1:
+            continue
+        max_slots = int(slot.get("available") or 0) + int(slot.get("used") or 0)
+        if not max_slots:
+            continue
+        used = int(slot.get("used") or 0)
+        if used:
+            used_map["0"] = used
+
+    return json.dumps(used_map, ensure_ascii=False)
+
+
 def _ordinal_suffix(level: int) -> str:
     if 10 <= level % 100 <= 20:
         return "th"
@@ -789,8 +972,96 @@ def _spell_level_label(level: int) -> str:
     return f"{level}{_ordinal_suffix(level)}"
 
 
-def _spell_plain_body(definition: dict[str, Any]) -> str:
-    snippet = _clean_snippet(definition.get("snippet") or "")
+def _spell_casting_time(definition: dict[str, Any]) -> str:
+    activation = definition.get("activation") or {}
+    if not activation:
+        return "—"
+    count = int(activation.get("activationTime") or 1)
+    kind = ACTIVATION_TYPE_LABELS.get(int(activation.get("activationType") or 1), "action")
+    if count == 1:
+        return f"1 {kind}"
+    if kind in {"action", "bonus action", "reaction"}:
+        return f"{count} {kind}s"
+    return f"{count} {kind}"
+
+
+def _spell_range_text(definition: dict[str, Any]) -> str:
+    range_obj = definition.get("range") or {}
+    origin = (range_obj.get("origin") or "").strip()
+    range_value = int(range_obj.get("rangeValue") or 0)
+    aoe_type = range_obj.get("aoeType")
+    aoe_value = range_obj.get("aoeValue")
+
+    if origin.lower() == "touch":
+        text = "Touch"
+    elif origin.lower() == "self" and not range_value:
+        text = "Self"
+    elif range_value:
+        text = f"{range_value} ft."
+    elif origin:
+        text = origin
+    else:
+        text = "—"
+
+    if aoe_type and aoe_value:
+        text += f" ({aoe_value} ft. {str(aoe_type).lower()})"
+    return text
+
+
+def _spell_duration_text(definition: dict[str, Any]) -> str:
+    duration = definition.get("duration") or {}
+    duration_type = (duration.get("durationType") or "").strip()
+    if duration_type.lower() == "instantaneous":
+        return "Instantaneous"
+    interval = int(duration.get("durationInterval") or 0)
+    unit = (duration.get("durationUnit") or "").strip().lower()
+    unit_text = unit or "round"
+    if interval != 1 and not unit_text.endswith("s"):
+        unit_text += "s"
+    if duration_type.lower() == "concentration":
+        if interval:
+            return f"Concentration, up to {interval} {unit_text}"
+        return "Concentration"
+    if interval:
+        return f"{interval} {unit_text}"
+    return duration_type or "—"
+
+
+def _spell_components_text(definition: dict[str, Any]) -> str:
+    components = definition.get("components") or []
+    labels = [SPELL_COMPONENT_LABELS.get(int(component), "") for component in components]
+    labels = [label for label in labels if label]
+    if labels:
+        return ", ".join(labels)
+    description = (definition.get("componentsDescription") or "").strip()
+    return description or "—"
+
+
+def _spell_hit_dc_text(definition: dict[str, Any], data: dict[str, Any]) -> str:
+    mods = _active_modifiers(data)
+    scores = _ability_scores(data, mods)
+    prof = _proficiency_bonus(_total_level(data))
+    spell_ability_id = _spellcasting_ability_id(data)
+    spell_key = STAT_IDS.get(spell_ability_id or 5, "wis")
+    spell_mod = _ability_mod(scores[spell_key])
+    save_dc = str(8 + prof + spell_mod)
+
+    if definition.get("attackType"):
+        return f"{_signed(prof + spell_mod)} to hit"
+    save_id = definition.get("saveDcAbilityId")
+    if save_id:
+        save_key = STAT_IDS.get(int(save_id), "str")
+        return f"DC {save_dc} ({STAT_LABELS[save_key]})"
+    return "—"
+
+
+def _spell_plain_body(definition: dict[str, Any], *, data: dict[str, Any] | None = None) -> str:
+    snippet = _snippet_from_fields(
+        definition.get("snippet") or "",
+        definition.get("description") or "",
+        data=data,
+        level_scales=definition.get("levelScales"),
+    )
     if snippet:
         return snippet
     text = definition.get("description") or ""
@@ -822,7 +1093,12 @@ def _collect_spells(data: dict[str, Any]) -> list[dict[str, Any]]:
                     "school": (definition.get("school") or "").strip().lower(),
                     "concentration": bool(definition.get("concentration")),
                     "ritual": bool(definition.get("ritual")),
-                    "body": _spell_plain_body(definition),
+                    "casting_time": _spell_casting_time(definition),
+                    "range": _spell_range_text(definition),
+                    "hit_dc": _spell_hit_dc_text(definition, data),
+                    "components": _spell_components_text(definition),
+                    "duration": _spell_duration_text(definition),
+                    "body": _spell_plain_body(definition, data=data),
                 }
             )
     spells.sort(key=lambda item: (item["level"], item["name"].lower()))
@@ -836,8 +1112,176 @@ def _spells_json(data: dict[str, Any]) -> str:
     return json.dumps(spells, ensure_ascii=False)
 
 
-def _clean_snippet(value: str) -> str:
+def _snippet_from_fields(
+    snippet: str,
+    description: str,
+    *,
+    data: dict[str, Any] | None,
+    level_scales: list[dict[str, Any]] | None = None,
+) -> str:
+    cleaned = _clean_snippet(snippet, data=data, level_scales=level_scales) if snippet else ""
+    if _snippet_looks_broken(cleaned) and description:
+        cleaned = _clean_snippet(description, data=data, level_scales=level_scales)
+    elif not cleaned and description:
+        cleaned = _clean_snippet(description, data=data, level_scales=level_scales)
+    return cleaned
+
+
+def _snippet_looks_broken(text: str) -> bool:
+    return bool(re.search(r"(up to|within|for|equal to) ,|\{\{", text))
+
+
+def _scale_from_level_scales(level_scales: list[dict[str, Any]] | None, level: int) -> int | None:
+    if not level_scales:
+        return None
+    best: tuple[int, int] | None = None
+    for scale in level_scales:
+        required = int(scale.get("level") or 0)
+        fixed = scale.get("fixedValue")
+        if fixed is None or required > level:
+            continue
+        if best is None or required > best[0]:
+            best = (required, int(fixed))
+    return best[1] if best else None
+
+
+def _safe_eval_arithmetic(expr: str) -> float:
+    ops = {
+        ast.Add: operator.add,
+        ast.Sub: operator.sub,
+        ast.Mult: operator.mul,
+        ast.Div: operator.truediv,
+        ast.USub: operator.neg,
+    }
+
+    def _eval(node: ast.AST) -> float:
+        if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
+            return float(node.value)
+        if isinstance(node, ast.BinOp):
+            return ops[type(node.op)](_eval(node.left), _eval(node.right))
+        if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.USub):
+            return -_eval(node.operand)
+        raise ValueError(expr)
+
+    tree = ast.parse(expr.strip(), mode="eval")
+    return _eval(tree.body)
+
+
+def _substitute_placeholder_expr(expr: str, *, level: int, prof: int, scores: dict[str, int]) -> str:
+    expr = re.sub(r"classlevel", str(level), expr, flags=re.I)
+    expr = re.sub(r"proficiency", str(prof), expr, flags=re.I)
+    return re.sub(
+        r"modifier:(\w+)",
+        lambda match: str(_ability_mod(scores.get(match.group(1), 10))),
+        expr,
+        flags=re.I,
+    )
+
+
+def _format_placeholder_number(value: int, *, unsigned: bool) -> str:
+    if unsigned:
+        return str(value)
+    return _signed(value)
+
+
+def _resolve_ddb_placeholder(
+    token: str,
+    *,
+    level: int,
+    prof: int,
+    scores: dict[str, int],
+    level_scales: list[dict[str, Any]] | None,
+) -> str | None:
+    unsigned = False
+    if token.endswith("#unsigned"):
+        unsigned = True
+        token = token[:-9]
+
+    if token == "scalevalue":
+        scale = _scale_from_level_scales(level_scales, level)
+        return str(scale) if scale is not None else None
+
+    if token.startswith("savedc:"):
+        ability = token.split(":", 1)[1].split("@", 1)[0].lower()
+        return str(8 + prof + _ability_mod(scores.get(ability, 10)))
+
+    if token.startswith("spellattack:"):
+        ability = token.split(":", 1)[1].split("@", 1)[0].lower()
+        return _format_placeholder_number(prof + _ability_mod(scores.get(ability, 10)), unsigned=unsigned)
+
+    if token.startswith("modifier:"):
+        ability_part = token[len("modifier:") :]
+        min_value: int | None = None
+        if "@min:" in ability_part:
+            ability, min_part = ability_part.split("@min:", 1)
+            min_value = int(min_part)
+        else:
+            ability = ability_part.split("@", 1)[0]
+        ability = ability.lower()
+        bonus = _ability_mod(scores.get(ability, 10))
+        if min_value is not None:
+            bonus = max(bonus, min_value)
+        return _format_placeholder_number(bonus, unsigned=unsigned)
+
+    rounded = re.fullmatch(r"\((.+)\)@(roundup|rounddown)", token, flags=re.I)
+    if rounded:
+        expr = _substitute_placeholder_expr(rounded.group(1), level=level, prof=prof, scores=scores)
+        value = _safe_eval_arithmetic(expr)
+        if rounded.group(2).lower() == "roundup":
+            value = math.ceil(value)
+        else:
+            value = math.floor(value)
+        return _format_placeholder_number(int(value), unsigned=True)
+
+    paren_expr = re.fullmatch(r"\((.+)\)([+*/-]\d+)?", token)
+    if paren_expr:
+        expr = _substitute_placeholder_expr(paren_expr.group(1), level=level, prof=prof, scores=scores)
+        if paren_expr.group(2):
+            expr += paren_expr.group(2)
+        value = _safe_eval_arithmetic(expr)
+        return _format_placeholder_number(int(value), unsigned=True)
+
+    if re.fullmatch(r"[\w:+\-*/.()]+", token):
+        expr = _substitute_placeholder_expr(token, level=level, prof=prof, scores=scores)
+        value = _safe_eval_arithmetic(expr)
+        return _format_placeholder_number(int(value), unsigned=True)
+
+    return None
+
+
+def _replace_ddb_placeholders(
+    text: str,
+    *,
+    data: dict[str, Any],
+    level_scales: list[dict[str, Any]] | None = None,
+) -> str:
+    mods = _active_modifiers(data)
+    scores = _ability_scores(data, mods)
+    level = _total_level(data)
+    prof = _proficiency_bonus(level)
+
+    def repl(match: re.Match[str]) -> str:
+        resolved = _resolve_ddb_placeholder(
+            match.group(1),
+            level=level,
+            prof=prof,
+            scores=scores,
+            level_scales=level_scales,
+        )
+        return resolved if resolved is not None else ""
+
+    return re.sub(r"\{\{([^}]+)\}\}", repl, text)
+
+
+def _clean_snippet(
+    value: str,
+    *,
+    data: dict[str, Any] | None = None,
+    level_scales: list[dict[str, Any]] | None = None,
+) -> str:
     text = re.sub(r"<[^>]+>", " ", value or "")
+    if data is not None:
+        text = _replace_ddb_placeholders(text, data=data, level_scales=level_scales)
     text = re.sub(r"\{\{[^}]+\}\}", "", text)
     return " ".join(text.split())
 
@@ -899,8 +1343,8 @@ def _plain_weapon_attack_lines(data: dict[str, Any], scores: dict[str, int], pro
     return lines
 
 
-def _plain_action_detail_line(action: dict[str, Any]) -> str:
-    snippet = _clean_snippet(action.get("snippet") or action.get("description") or "")
+def _plain_action_detail_line(action: dict[str, Any], data: dict[str, Any]) -> str:
+    snippet = _snippet_from_fields(action.get("snippet") or "", action.get("description") or "", data=data)
     name = action.get("name") or "Action"
     return _plain_named_detail_line(name, snippet)
 
@@ -924,10 +1368,10 @@ def _plain_combat_buckets(data: dict[str, Any], scores: dict[str, int], prof: in
             if not group:
                 continue
             for action in group:
-                buckets[_activation_bucket(action)].append(_plain_action_detail_line(action))
+                buckets[_activation_bucket(action)].append(_plain_action_detail_line(action, data))
 
     for action in data.get("customActions") or []:
-        buckets[_activation_bucket(action)].append(_plain_action_detail_line(action))
+        buckets[_activation_bucket(action)].append(_plain_action_detail_line(action, data))
 
     return {key: "\n".join(lines) if lines else "" for key, lines in buckets.items()}
 
@@ -941,10 +1385,10 @@ def _plain_actions(data: dict[str, Any], scores: dict[str, int], prof: int) -> s
             if not group:
                 continue
             for action in group:
-                lines.append(_plain_action_detail_line(action))
+                lines.append(_plain_action_detail_line(action, data))
 
     for action in data.get("customActions") or []:
-        lines.append(_plain_action_detail_line(action))
+        lines.append(_plain_action_detail_line(action, data))
 
     return "\n".join(lines) if lines else "—"
 
@@ -958,7 +1402,12 @@ def _plain_features(data: dict[str, Any], level: int) -> str:
     lines: list[str] = []
     for trait in ((data.get("race") or {}).get("racialTraits") or []):
         definition = trait.get("definition") or {}
-        snippet = _clean_snippet(definition.get("snippet") or definition.get("description") or "")
+        snippet = _snippet_from_fields(
+            definition.get("snippet") or "",
+            definition.get("description") or "",
+            data=data,
+            level_scales=definition.get("levelScales"),
+        )
         name = definition.get("name") or "Trait"
         lines.append(_plain_named_detail_line(name, snippet))
     for cls in data.get("classes") or []:
@@ -967,13 +1416,23 @@ def _plain_features(data: dict[str, Any], level: int) -> str:
             required = definition.get("requiredLevel") or 0
             if required and level < required:
                 continue
-            snippet = _clean_snippet(definition.get("snippet") or definition.get("description") or "")
+            snippet = _snippet_from_fields(
+                definition.get("snippet") or "",
+                definition.get("description") or "",
+                data=data,
+                level_scales=definition.get("levelScales"),
+            )
             name = definition.get("name") or "Feature"
             if snippet or name:
                 lines.append(_plain_named_detail_line(name, snippet))
     for feat in data.get("feats") or []:
         definition = feat.get("definition") or {}
-        snippet = _clean_snippet(definition.get("snippet") or definition.get("description") or "")
+        snippet = _snippet_from_fields(
+            definition.get("snippet") or "",
+            definition.get("description") or "",
+            data=data,
+            level_scales=definition.get("levelScales"),
+        )
         name = definition.get("name") or "Feat"
         lines.append(_plain_named_detail_line(name, snippet))
     return "\n".join(lines) if lines else "—"

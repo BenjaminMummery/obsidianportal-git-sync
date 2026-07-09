@@ -1,4 +1,4 @@
-/* Sindrel Beyond DST — matches metadata/ddb-sheet.css */
+/* Sindrel Beyond DST - matches metadata/dst/sindrel-beyond/css.css */
 
 /* D&D Beyond-style character sheet HTML (paste into Obsidian Portal campaign Custom CSS) */
 
@@ -187,24 +187,179 @@
   gap: 0.85rem;
 }
 
-.ds_sindrel_beyond .ddb-sheet .ddb-bottom-row > .ddb-section:only-child,
-.ds_sinbdrel_beyond .ddb-sheet .ddb-bottom-row > .ddb-section:only-child {
+.ds_sindrel_beyond .ddb-sheet .ddb-bottom-row .ddb-section:only-child,
+.ds_sinbdrel_beyond .ddb-sheet .ddb-bottom-row .ddb-section:only-child {
   grid-column: span 1;
 }
 
-.ds_sindrel_beyond .ddb-sheet .ddb-block.ddb-skills,
-.ds_sinbdrel_beyond .ddb-sheet .ddb-block.ddb-skills {
-  column-count: 1;
+.ds_sindrel_beyond .ddb-sheet .ddb-abilities-row,
+.ds_sinbdrel_beyond .ddb-sheet .ddb-abilities-row {
+  grid-template-columns: 1fr 1fr;
+  align-items: start;
 }
 
-.ds_sindrel_beyond .ddb-sheet .ddb-skill-group,
-.ds_sinbdrel_beyond .ddb-sheet .ddb-skill-group {
-  margin-bottom: 0.55rem;
+.ds_sindrel_beyond .ddb-sheet .ddb-column-left,
+.ds_sinbdrel_beyond .ddb-sheet .ddb-column-left {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
 }
 
-.ds_sindrel_beyond .ddb-sheet .ddb-skill-group:last-child,
-.ds_sinbdrel_beyond .ddb-sheet .ddb-skill-group:last-child {
+.ds_sindrel_beyond .ddb-sheet .ddb-abilities-skills,
+.ds_sinbdrel_beyond .ddb-sheet .ddb-abilities-skills {
+  min-width: 0;
+}
+
+.ds_sindrel_beyond .ddb-sheet .ddb-column-left .ddb-combat,
+.ds_sinbdrel_beyond .ddb-sheet .ddb-column-left .ddb-combat {
   margin-bottom: 0;
+}
+
+.ds_sindrel_beyond .ddb-sheet .ddb-column-left .ddb-combat .ddb-block,
+.ds_sinbdrel_beyond .ddb-sheet .ddb-column-left .ddb-combat .ddb-block {
+  font-size: 0.82rem;
+}
+
+.ds_sindrel_beyond .ddb-sheet .ddb-ability-blocks-json,
+.ds_sinbdrel_beyond .ddb-sheet .ddb-ability-blocks-json {
+  display: none !important;
+}
+
+.ds_sindrel_beyond .ddb-sheet .ddb-ability-blocks,
+.ds_sinbdrel_beyond .ddb-sheet .ddb-ability-blocks {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.ds_sindrel_beyond .ddb-sheet .ddb-ability-block,
+.ds_sinbdrel_beyond .ddb-sheet .ddb-ability-block {
+  padding: 0.55rem 0.65rem;
+  background-color: #deded8;
+  border: 1px solid #6d6862;
+  border-radius: 0;
+}
+
+.ds_sindrel_beyond .ddb-sheet .ddb-ability-header,
+.ds_sinbdrel_beyond .ddb-sheet .ddb-ability-header {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin-bottom: 0.45rem;
+}
+
+.ds_sindrel_beyond .ddb-sheet .ddb-score-box,
+.ds_sinbdrel_beyond .ddb-sheet .ddb-score-box {
+  flex: 0 0 auto;
+  width: 3rem;
+  padding: 0.3rem 0.35rem;
+  text-align: center;
+  background-color: #f4f1ea;
+  border: 2px solid #6d6862;
+  border-radius: 4px;
+}
+
+.ds_sindrel_beyond .ddb-sheet .ddb-score-mod,
+.ds_sinbdrel_beyond .ddb-sheet .ddb-score-mod {
+  display: block;
+  font-size: 1.1rem;
+  font-weight: 700;
+  line-height: 1.1;
+  color: #211b18;
+}
+
+.ds_sindrel_beyond .ddb-sheet .ddb-score-value,
+.ds_sinbdrel_beyond .ddb-sheet .ddb-score-value {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #64748b;
+  line-height: 1.2;
+}
+
+.ds_sindrel_beyond .ddb-sheet .ddb-ability-block .ddb-ability-label,
+.ds_sinbdrel_beyond .ddb-sheet .ddb-ability-block .ddb-ability-label {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #3b0709;
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+
+.ds_sindrel_beyond .ddb-sheet .ddb-check-list,
+.ds_sinbdrel_beyond .ddb-sheet .ddb-check-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.ds_sindrel_beyond .ddb-sheet .ddb-check-row,
+.ds_sinbdrel_beyond .ddb-sheet .ddb-check-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 1.35rem;
+}
+
+.ds_sindrel_beyond .ddb-sheet .ddb-prof-mark,
+.ds_sinbdrel_beyond .ddb-sheet .ddb-prof-mark {
+  flex: 0 0 0.65rem;
+  width: 0.65rem;
+  height: 0.65rem;
+  border-radius: 50%;
+  border: 2px solid #6d6862;
+  box-sizing: border-box;
+}
+
+.ds_sindrel_beyond .ddb-sheet .ddb-prof-mark-filled,
+.ds_sinbdrel_beyond .ddb-sheet .ddb-prof-mark-filled {
+  background-color: #3b0709;
+  border-color: #3b0709;
+}
+
+.ds_sindrel_beyond .ddb-sheet .ddb-prof-mark-hollow,
+.ds_sinbdrel_beyond .ddb-sheet .ddb-prof-mark-hollow {
+  background-color: transparent;
+}
+
+.ds_sindrel_beyond .ddb-sheet .ddb-prof-mark-expertise,
+.ds_sinbdrel_beyond .ddb-sheet .ddb-prof-mark-expertise {
+  background-color: #3b0709;
+  border-color: #3b0709;
+  box-shadow: inset 0 0 0 2px #deded8;
+}
+
+.ds_sindrel_beyond .ddb-sheet .ddb-check-name,
+.ds_sinbdrel_beyond .ddb-sheet .ddb-check-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 0.82rem;
+  color: #211b18;
+}
+
+.ds_sindrel_beyond .ddb-sheet .ddb-check-bonus,
+.ds_sinbdrel_beyond .ddb-sheet .ddb-check-bonus {
+  flex: 0 0 auto;
+  font-weight: 700;
+  font-size: 0.82rem;
+  color: #211b18;
+  margin-left: auto;
+}
+
+.ds_sindrel_beyond .ddb-sheet .ddb-sense-tile,
+.ds_sinbdrel_beyond .ddb-sheet .ddb-sense-tile {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+}
+
+.ds_sindrel_beyond .ddb-sheet .ddb-sense-item,
+.ds_sinbdrel_beyond .ddb-sheet .ddb-sense-item {
+  padding: 0.55rem 0.65rem;
+  background-color: #deded8;
+  border: 1px solid #6d6862;
+  border-radius: 0;
+  text-align: center;
 }
 
 .ds_sindrel_beyond .ddb-sheet .ddb-status-row,
@@ -233,13 +388,13 @@
     grid-template-columns: 1fr;
   }
 
-  .ds_sindrel_beyond .ddb-sheet .ddb-block.ddb-skills,
-  .ds_sinbdrel_beyond .ddb-sheet .ddb-block.ddb-skills {
-    column-count: 1;
-  }
-
   .ds_sindrel_beyond .ddb-sheet .ddb-status-row,
   .ds_sinbdrel_beyond .ddb-sheet .ddb-status-row {
+    grid-template-columns: 1fr;
+  }
+
+  .ds_sindrel_beyond .ddb-sheet .ddb-sense-tile,
+  .ds_sinbdrel_beyond .ddb-sheet .ddb-sense-tile {
     grid-template-columns: 1fr;
   }
 
@@ -254,38 +409,6 @@
   }
 }
 
-.ds_sindrel_beyond .ddb-sheet .ddb-ability-grid,
-.ds_sinbdrel_beyond .ddb-sheet .ddb-ability-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 0.45rem;
-}
-
-.ds_sindrel_beyond .ddb-sheet .ddb-ability,
-.ds_sinbdrel_beyond .ddb-sheet .ddb-ability {
-  padding: 0.45rem;
-  text-align: center;
-  background-color: #deded8;
-  border: 1px solid #6d6862;
-  border-radius: 0;
-}
-
-.ds_sindrel_beyond .ddb-sheet .ddb-ability-label,
-.ds_sinbdrel_beyond .ddb-sheet .ddb-ability-label {
-  display: block;
-  font-size: 0.72rem;
-  font-weight: 700;
-  color: #64748b;
-}
-
-.ds_sindrel_beyond .ddb-sheet .ddb-ability-value,
-.ds_sinbdrel_beyond .ddb-sheet .ddb-ability-value {
-  display: block;
-  margin-top: 0.15rem;
-  font-weight: 700;
-  color: #211b18;
-}
-
 .ds_sindrel_beyond .ddb-sheet .ddb-block,
 .ds_sinbdrel_beyond .ddb-sheet .ddb-block {
   padding: 0.55rem 0.65rem;
@@ -297,23 +420,6 @@
 .ds_sindrel_beyond .ddb-sheet .ddb-block strong,
 .ds_sinbdrel_beyond .ddb-sheet .ddb-block strong {
   color: #3b0709;
-}
-
-.ds_sindrel_beyond .ddb-sheet .ddb-sense-row,
-.ds_sinbdrel_beyond .ddb-sheet .ddb-sense-row {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 0.5rem;
-  margin-top: 0.65rem;
-}
-
-.ds_sindrel_beyond .ddb-sheet .ddb-sense-row div,
-.ds_sinbdrel_beyond .ddb-sheet .ddb-sense-row div {
-  padding: 0.45rem;
-  background-color: #deded8;
-  border: 1px solid #6d6862;
-  border-radius: 0;
-  text-align: center;
 }
 
 .ds_sindrel_beyond .ddb-sheet .ddb-sense-label,
@@ -351,8 +457,130 @@
 }
 
 .ds_sindrel_beyond .ddb-sheet .ddb-spells-json,
-.ds_sinbdrel_beyond .ddb-sheet .ddb-spells-json {
+.ds_sinbdrel_beyond .ddb-sheet .ddb-spells-json,
+.ds_sindrel_beyond .ddb-sheet .ddb-spell-slots-json,
+.ds_sinbdrel_beyond .ddb-sheet .ddb-spell-slots-json,
+.ds_sindrel_beyond .ddb-sheet .ddb-spell-slots-used-json,
+.ds_sinbdrel_beyond .ddb-sheet .ddb-spell-slots-used-json,
+.ds_sindrel_beyond .ddb-sheet .ddb-spell-slots-legacy,
+.ds_sinbdrel_beyond .ddb-sheet .ddb-spell-slots-legacy {
   display: none !important;
+}
+
+.ds_sindrel_beyond .ddb-sheet .ddb-spell-slots,
+.ds_sinbdrel_beyond .ddb-sheet .ddb-spell-slots {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-bottom: 0.65rem;
+}
+
+.ds_sindrel_beyond .ddb-sheet .ddb-spell-slot-row,
+.ds_sinbdrel_beyond .ddb-sheet .ddb-spell-slot-row {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.ds_sindrel_beyond .ddb-sheet .ddb-spell-slot-label,
+.ds_sinbdrel_beyond .ddb-sheet .ddb-spell-slot-label {
+  flex: 0 0 2.5rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #64748b;
+}
+
+.ds_sindrel_beyond .ddb-sheet .ddb-spell-slot-marks,
+.ds_sinbdrel_beyond .ddb-sheet .ddb-spell-slot-marks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.ds_sindrel_beyond .ddb-sheet .ddb-slot-mark,
+.ds_sinbdrel_beyond .ddb-sheet .ddb-slot-mark {
+  width: 0.85rem;
+  height: 0.85rem;
+  border-radius: 50%;
+  border: 2px solid #6d6862;
+  box-sizing: border-box;
+}
+
+.ds_sindrel_beyond .ddb-sheet .ddb-slot-mark-used,
+.ds_sinbdrel_beyond .ddb-sheet .ddb-slot-mark-used {
+  background-color: #3b0709;
+  border-color: #3b0709;
+}
+
+.ds_sindrel_beyond .ddb-sheet .ddb-slot-mark-open,
+.ds_sinbdrel_beyond .ddb-sheet .ddb-slot-mark-open {
+  background-color: transparent;
+}
+
+.ds_sindrel_beyond .ddb-sheet .ddb-slot-mark-editable,
+.ds_sinbdrel_beyond .ddb-sheet .ddb-slot-mark-editable {
+  cursor: pointer;
+}
+
+.ds_sindrel_beyond.editable .ddb-sheet .ddb-slot-mark-editable:hover,
+.ds_sinbdrel_beyond.editable .ddb-sheet .ddb-slot-mark-editable:hover {
+  border-color: #3b0709;
+}
+
+.ds_sindrel_beyond .ddb-sheet .ddb-spell-meta,
+.ds_sinbdrel_beyond .ddb-sheet .ddb-spell-meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.35rem 0.75rem;
+  padding: 0.5rem 0.65rem;
+  border-top: 1px solid #d6d0c6;
+  background: #ece8df;
+  font-size: 0.78rem;
+}
+
+.ds_sindrel_beyond .ddb-sheet .ddb-spell-meta-row,
+.ds_sinbdrel_beyond .ddb-sheet .ddb-spell-meta-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.ds_sindrel_beyond .ddb-sheet .ddb-spell-meta-label,
+.ds_sinbdrel_beyond .ddb-sheet .ddb-spell-meta-label {
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #64748b;
+}
+
+.ds_sindrel_beyond .ddb-sheet .ddb-spell-meta-value,
+.ds_sinbdrel_beyond .ddb-sheet .ddb-spell-meta-value {
+  color: #211b18;
+  font-weight: 600;
+}
+
+@media (max-width: 720px) {
+  .ds_sindrel_beyond .ddb-sheet .ddb-spell-meta,
+  .ds_sinbdrel_beyond .ddb-sheet .ddb-spell-meta {
+    grid-template-columns: 1fr;
+  }
+}
+
+.ds_sindrel_beyond .ddb-sheet .ddb-spell-level-title,
+.ds_sinbdrel_beyond .ddb-sheet .ddb-spell-level-title {
+  margin: 0.65rem 0 0.35rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #64748b;
+}
+
+.ds_sindrel_beyond .ddb-sheet .ddb-spell-level-title:first-child,
+.ds_sinbdrel_beyond .ddb-sheet .ddb-spell-level-title:first-child {
+  margin-top: 0;
 }
 
 .ds_sindrel_beyond .ddb-sheet .ddb-spell-cards,
@@ -409,7 +637,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: 0.25rem;
-  justify-content: flex-end;
+  margin-left: auto;
   flex: 0 1 auto;
 }
 
@@ -515,8 +743,6 @@
 
 .ds_sindrel_beyond .ddb-sheet .dsf.ddb-pill-value,
 .ds_sinbdrel_beyond .ddb-sheet .dsf.ddb-pill-value,
-.ds_sindrel_beyond .ddb-sheet .dsf.ddb-ability-value,
-.ds_sinbdrel_beyond .ddb-sheet .dsf.ddb-ability-value,
 .ds_sindrel_beyond .ddb-sheet .dsf.ddb-sense-value,
 .ds_sinbdrel_beyond .ddb-sheet .dsf.ddb-sense-value {
   border: none;

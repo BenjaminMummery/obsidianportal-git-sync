@@ -1,6 +1,6 @@
 # Sindrel Beyond character sheet (Obsidian Portal DST)
 
-Matches the **description HTML sheet** (`src/lore_bridge/dndbeyond/templates/sheet.html` + `metadata/ddb-sheet.css`): grey blockquote styling, div-only markup, save grid, combat buckets, conditional spellcasting. Features & Traits remain in **GM Only** (`game_master_info`), not here.
+DST-only layout: grey blockquote styling, combined ability/save/skill blocks, combat buckets, conditional spellcasting. Features & Traits remain in **GM Only** (`game_master_info`), not here.
 
 **Slug:** `sindrel_beyond` (installed campaign DST may show `sinbdrel_beyond` — JS handles both)  
 **Game system:** D&D 5E
@@ -41,21 +41,32 @@ dynamic_sheet:
 
 Run `lore-bridge ddb-sync` after bridge deploy to populate `dynamic_sheet` from D&D Beyond. Player-edited `hp_current` is preserved on re-sync.
 
-## Sections vs description HTML sheet
+## Sections vs `dynamic_sheet` keys
 
 | Section | `dynamic_sheet` keys |
 |---------|----------------------|
 | Header | `class_summary`, `prof_bonus`, `player_campaign`, `avatar_url` |
 | Defenses | `ac`, `hp_current` (editable), `hp_max`, `speed`, `initiative`, `hit_dice` |
-| Abilities | `str` … `cha` |
-| Saving throws | `str_save` … `cha_save` |
-| Skills & senses | `skills`, `passive_perception`, `passive_investigation`, `passive_insight` |
+| Abilities & skills | `ability_blocks_json` (rendered by DST JS) |
+| Senses | `passive_perception`, `passive_investigation`, `passive_insight` |
 | Combat | `actions`, `bonus_actions`, `reactions` |
 | Proficiencies | `proficiencies`, `languages`, `tools` |
 | Spellcasting | `spellcasting_ability`, `spell_save_dc`, `spell_attack`, `spell_slots`, `spells_json` (collapsible cards; includes cantrips + ritual-only spells) |
 | Sync | `ddb_last_sync` |
 
-**Not on player sheet:** `features_traits`, `limited_use`, `equipment`, race/background/alignment/inspiration (same trim as description HTML).
+Legacy keys (`str` … `cha`, `str_save` … `cha_save`, `skills`) are still synced for compatibility but not shown in the DST template.
+
+**Not on player sheet:** `features_traits`, `limited_use`, `equipment`, race/background/alignment/inspiration.
+
+## Ability blocks
+
+`ability_blocks_json` is a JSON array synced from D&D Beyond. Each entry:
+
+- `key`, `label`, `score`, `modifier`
+- `save`: `{ bonus, proficient }`
+- `skills`: `[{ name, bonus, proficient, expertise }]`
+
+DST JS renders six stacked blocks with a score box (modifier on top, score below), saving throw row, then skills. Proficiency markers: hollow circle (not proficient), filled circle (proficient), filled with inner ring (expertise).
 
 ## Spell cards
 
@@ -78,7 +89,7 @@ School → house crest mapping (campaign `/images/` paths):
 | Necromancy | Samhain | `/images/1555017/Samhain.png` |
 | Transmutation | Grimbolg | `/images/1546932/Grimbolg.png` |
 
-`spells_prepared` remains in `dynamic_sheet` for the description HTML sheet; the DST uses `spells_json` only.
+`spells_prepared` remains in `dynamic_sheet` for legacy consumers; the DST uses `spells_json` only.
 
 ## Legal
 

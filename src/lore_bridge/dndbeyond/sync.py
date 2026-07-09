@@ -97,6 +97,8 @@ def sync_from_dndbeyond_impl(
                     ds["hp_current"] = str(existing_ds["hp_current"])
                 if existing_ds.get("temp_hp") not in (None, ""):
                     ds["temp_hp"] = str(existing_ds["temp_hp"])
+                if existing_ds.get("spell_slots_used_json") not in (None, ""):
+                    ds["spell_slots_used_json"] = str(existing_ds["spell_slots_used_json"])
             fm["dynamic_sheet"] = ds
             if dynamic_sheet_template_id:
                 fm["dynamic_sheet_template_id"] = dynamic_sheet_template_id

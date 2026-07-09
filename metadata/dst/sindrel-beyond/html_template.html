@@ -35,52 +35,54 @@
     </div>
   </div>
 
-  <div class="ddb-columns">
-    <div class="ddb-section">
-      <h2 class="ddb-section-title">Abilities</h2>
-      <div class="ddb-ability-grid">
-        <div class="ddb-ability"><span class="ddb-ability-label">STR</span><span class="dsf dsf_str ddb-ability-value"></span></div>
-        <div class="ddb-ability"><span class="ddb-ability-label">DEX</span><span class="dsf dsf_dex ddb-ability-value"></span></div>
-        <div class="ddb-ability"><span class="ddb-ability-label">CON</span><span class="dsf dsf_con ddb-ability-value"></span></div>
-        <div class="ddb-ability"><span class="ddb-ability-label">INT</span><span class="dsf dsf_int ddb-ability-value"></span></div>
-        <div class="ddb-ability"><span class="ddb-ability-label">WIS</span><span class="dsf dsf_wis ddb-ability-value"></span></div>
-        <div class="ddb-ability"><span class="ddb-ability-label">CHA</span><span class="dsf dsf_cha ddb-ability-value"></span></div>
+  <div class="ddb-columns ddb-abilities-row">
+    <div class="ddb-column ddb-column-left">
+      <div class="ddb-section ddb-senses">
+        <h2 class="ddb-section-title">Senses</h2>
+        <div class="ddb-sense-tile">
+          <div class="ddb-sense-item">
+            <span class="ddb-sense-label">Passive Perception</span>
+            <span class="dsf dsf_passive_perception ddb-sense-value"></span>
+          </div>
+          <div class="ddb-sense-item">
+            <span class="ddb-sense-label">Passive Investigation</span>
+            <span class="dsf dsf_passive_investigation ddb-sense-value"></span>
+          </div>
+          <div class="ddb-sense-item">
+            <span class="ddb-sense-label">Passive Insight</span>
+            <span class="dsf dsf_passive_insight ddb-sense-value"></span>
+          </div>
+        </div>
       </div>
-      <h3 class="ddb-subsection-title">Saving Throws</h3>
-      <div class="ddb-ability-grid">
-        <div class="ddb-ability"><span class="ddb-ability-label">STR</span><span class="dsf dsf_str_save ddb-ability-value"></span></div>
-        <div class="ddb-ability"><span class="ddb-ability-label">DEX</span><span class="dsf dsf_dex_save ddb-ability-value"></span></div>
-        <div class="ddb-ability"><span class="ddb-ability-label">CON</span><span class="dsf dsf_con_save ddb-ability-value"></span></div>
-        <div class="ddb-ability"><span class="ddb-ability-label">INT</span><span class="dsf dsf_int_save ddb-ability-value"></span></div>
-        <div class="ddb-ability"><span class="ddb-ability-label">WIS</span><span class="dsf dsf_wis_save ddb-ability-value"></span></div>
-        <div class="ddb-ability"><span class="ddb-ability-label">CHA</span><span class="dsf dsf_cha_save ddb-ability-value"></span></div>
+
+      <div class="ddb-section ddb-proficiencies">
+        <h2 class="ddb-section-title">Proficiencies &amp; Training</h2>
+        <div class="ddb-kv"><span class="ddb-label">Proficiencies</span><span class="dsf dsf_proficiencies ddb-pre ddb-kv-value"></span></div>
+        <div class="ddb-kv"><span class="ddb-label">Languages</span><span class="dsf dsf_languages ddb-pre ddb-kv-value"></span></div>
+        <div class="ddb-kv"><span class="ddb-label">Tools</span><span class="dsf dsf_tools ddb-pre ddb-kv-value"></span></div>
+      </div>
+
+      <div class="ddb-section ddb-combat">
+        <h2 class="ddb-section-title">Combat</h2>
+        <div class="ddb-combat-bucket" data-bucket="actions">
+          <h3 class="ddb-subsection-title">Actions</h3>
+          <div class="ddb-block ddb-combat-lines"><span class="dsf dsf_actions ddb-pre"></span></div>
+        </div>
+        <div class="ddb-combat-bucket" data-bucket="bonus_actions">
+          <h3 class="ddb-subsection-title">Bonus Actions</h3>
+          <div class="ddb-block ddb-combat-lines"><span class="dsf dsf_bonus_actions ddb-pre"></span></div>
+        </div>
+        <div class="ddb-combat-bucket" data-bucket="reactions">
+          <h3 class="ddb-subsection-title">Reactions</h3>
+          <div class="ddb-block ddb-combat-lines"><span class="dsf dsf_reactions ddb-pre"></span></div>
+        </div>
       </div>
     </div>
 
-    <div class="ddb-section">
-      <h2 class="ddb-section-title">Skills &amp; Senses</h2>
-      <div class="ddb-block ddb-skills"><span class="dsf dsf_skills ddb-pre"></span></div>
-      <div class="ddb-sense-row">
-        <div><span class="ddb-sense-label">Passive Perception</span><span class="dsf dsf_passive_perception ddb-sense-value"></span></div>
-        <div><span class="ddb-sense-label">Passive Investigation</span><span class="dsf dsf_passive_investigation ddb-sense-value"></span></div>
-        <div><span class="ddb-sense-label">Passive Insight</span><span class="dsf dsf_passive_insight ddb-sense-value"></span></div>
-      </div>
-    </div>
-  </div>
-
-  <div class="ddb-section ddb-combat">
-    <h2 class="ddb-section-title">Combat</h2>
-    <div class="ddb-combat-bucket" data-bucket="actions">
-      <h3 class="ddb-subsection-title">Actions</h3>
-      <div class="ddb-block"><span class="dsf dsf_actions ddb-pre"></span></div>
-    </div>
-    <div class="ddb-combat-bucket" data-bucket="bonus_actions">
-      <h3 class="ddb-subsection-title">Bonus Actions</h3>
-      <div class="ddb-block"><span class="dsf dsf_bonus_actions ddb-pre"></span></div>
-    </div>
-    <div class="ddb-combat-bucket" data-bucket="reactions">
-      <h3 class="ddb-subsection-title">Reactions</h3>
-      <div class="ddb-block"><span class="dsf dsf_reactions ddb-pre"></span></div>
+    <div class="ddb-section ddb-abilities-skills">
+      <h2 class="ddb-section-title">Abilities &amp; Skills</h2>
+      <div class="ddb-ability-blocks" id="ddb-ability-blocks-mount"></div>
+      <span class="dsf dsf_ability_blocks_json readonly ddb-ability-blocks-json"></span>
     </div>
   </div>
 
@@ -89,27 +91,21 @@
     <div class="ddb-block"><span class="dsf dsf_limited_use ddb-pre"></span></div>
   </div>
 
-  <div class="ddb-columns ddb-bottom-row">
-    <div class="ddb-section ddb-half">
-      <h2 class="ddb-section-title">Proficiencies &amp; Training</h2>
-      <div class="ddb-kv"><span class="ddb-label">Proficiencies</span><span class="dsf dsf_proficiencies ddb-pre ddb-kv-value"></span></div>
-      <div class="ddb-kv"><span class="ddb-label">Languages</span><span class="dsf dsf_languages ddb-pre ddb-kv-value"></span></div>
-      <div class="ddb-kv"><span class="ddb-label">Tools</span><span class="dsf dsf_tools ddb-pre ddb-kv-value"></span></div>
+  <div class="ddb-section ddb-spellcasting">
+    <h2 class="ddb-section-title">Spellcasting</h2>
+    <div class="ddb-spell-header">
+      <div><span class="ddb-label">Ability</span> <span class="dsf dsf_spellcasting_ability"></span></div>
+      <div><span class="ddb-label">Save DC</span> <span class="dsf dsf_spell_save_dc"></span></div>
+      <div><span class="ddb-label">Attack</span> <span class="dsf dsf_spell_attack"></span></div>
     </div>
-
-    <div class="ddb-section ddb-half ddb-spellcasting">
-      <h2 class="ddb-section-title">Spellcasting</h2>
-      <div class="ddb-spell-header">
-        <div><span class="ddb-label">Ability</span> <span class="dsf dsf_spellcasting_ability"></span></div>
-        <div><span class="ddb-label">Save DC</span> <span class="dsf dsf_spell_save_dc"></span></div>
-        <div><span class="ddb-label">Attack</span> <span class="dsf dsf_spell_attack"></span></div>
-      </div>
-      <h3 class="ddb-subsection-title">Spell Slots</h3>
-      <div class="ddb-block"><span class="dsf dsf_spell_slots ddb-pre"></span></div>
-      <h3 class="ddb-subsection-title">Spells</h3>
-      <div class="ddb-spell-cards" id="ddb-spell-cards-mount"></div>
-      <span class="dsf dsf_spells_json readonly ddb-spells-json"></span>
-    </div>
+    <h3 class="ddb-subsection-title">Spell Slots</h3>
+    <div class="ddb-spell-slots"></div>
+    <span class="dsf dsf_spell_slots_json readonly ddb-spell-slots-json"></span>
+    <span class="dsf dsf_spell_slots_used_json dsfu ddb-spell-slots-used-json"></span>
+    <span class="dsf dsf_spell_slots readonly ddb-spell-slots-legacy"></span>
+    <h3 class="ddb-subsection-title">Spells</h3>
+    <div class="ddb-spell-cards" id="ddb-spell-cards-mount"></div>
+    <span class="dsf dsf_spells_json readonly ddb-spells-json"></span>
   </div>
 
   <div class="ddb-footer">
