@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from typing import Any
 
@@ -7,6 +8,8 @@ from lore_bridge.dndbeyond.fetch import DdbFetchError, fetch_character
 from lore_bridge.dndbeyond.gm import merge_ddb_gm_features
 from lore_bridge.dndbeyond.mapper import map_character, map_dynamic_sheet
 from lore_bridge.dndbeyond.render import render_gm_features, render_sheet
+
+logger = logging.getLogger("lore_bridge")
 
 
 class DdbSyncResult:
@@ -118,9 +121,11 @@ def sync_from_dndbeyond_impl(
                 progress.record_error(str(exc), phase="fetching_dndbeyond", path=path)
             continue
         except Exception as exc:
-            errors.append({"path": path, "dndbeyond_id": str(ddb_id), "detail": str(exc)})
+            logger.exception("DDB sync failed for %s / %s", path, ddb_id)
+            detail = f"{type(exc).__name__}: {exc!r}"
+            errors.append({"path": path, "dndbeyond_id": str(ddb_id), "detail": detail})
             if progress:
-                progress.record_error(str(exc), phase="fetching_dndbeyond", path=path)
+                progress.record_error(detail, phase="fetching_dndbeyond", path=path)
             continue
 
         if new_content != file.content:
