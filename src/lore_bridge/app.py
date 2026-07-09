@@ -60,7 +60,7 @@ DYNAMIC_SHEET_TEMPLATE_ID = os.environ.get("DYNAMIC_SHEET_TEMPLATE_ID", "").stri
 
 app = FastAPI(
     title="Sindrel Lore Bridge",
-    version="0.8.2",
+    version="0.8.3",
     description="Bidirectional Obsidian Portal ↔ GitHub lore sync bridge with pull-through conflict protection.",
 )
 
@@ -1319,7 +1319,9 @@ def publish_git_to_portal_impl(force_portal_pull: bool = True, progress: Progres
             description = parsed["description"]
             bio = parsed["bio"]
             gm_info = parsed["gm_info"]
-            op_description = op_character_description(ddb_sheet, description) if kind == "Character" else description
+            op_description = description if kind == "Character" and fm.get("dynamic_sheet_template_id") else (
+                op_character_description(ddb_sheet, description) if kind == "Character" else description
+            )
             page_id = fm.get("op_id")
             had_op_id = bool(page_id)
             if not page_id:

@@ -241,7 +241,7 @@ wheels = [
 
 [[package]]
 name = "lore-bridge"
-version = "0.8.2"
+version = "0.8.3"
 source = { editable = "." }
 dependencies = [
     { name = "beautifulsoup4" },

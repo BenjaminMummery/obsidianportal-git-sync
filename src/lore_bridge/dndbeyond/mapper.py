@@ -71,6 +71,16 @@ ACTIVATION_TYPE_LABELS = {
     8: "hour",
 }
 SPELL_COMPONENT_LABELS = {1: "V", 2: "S", 3: "M"}
+SPELL_SCHOOLS = {
+    1: "abjuration",
+    2: "conjuration",
+    3: "divination",
+    4: "enchantment",
+    5: "evocation",
+    6: "illusion",
+    7: "necromancy",
+    8: "transmutation",
+}
 
 
 def map_dynamic_sheet(data: dict[str, Any], *, synced_at: datetime | None = None) -> dict[str, str]:
@@ -1079,6 +1089,17 @@ def _spell_plain_body(definition: dict[str, Any], *, data: dict[str, Any] | None
     return re.sub(r"\n{3,}", "\n\n", text).strip()
 
 
+def _spell_school_name(definition: dict[str, Any]) -> str:
+    school = definition.get("school")
+    if isinstance(school, str):
+        return school.strip().lower()
+    if isinstance(school, dict):
+        return (school.get("name") or school.get("slug") or "").strip().lower()
+    if isinstance(school, int):
+        return SPELL_SCHOOLS.get(school, "")
+    return ""
+
+
 def _collect_spells(data: dict[str, Any]) -> list[dict[str, Any]]:
     seen: set[str] = set()
     spells: list[dict[str, Any]] = []
@@ -1096,7 +1117,7 @@ def _collect_spells(data: dict[str, Any]) -> list[dict[str, Any]]:
                     "name": name,
                     "level": level,
                     "level_label": _spell_level_label(level),
-                    "school": (definition.get("school") or "").strip().lower(),
+                    "school": _spell_school_name(definition),
                     "concentration": bool(definition.get("concentration")),
                     "ritual": bool(definition.get("ritual")),
                     "casting_time": _spell_casting_time(definition),
