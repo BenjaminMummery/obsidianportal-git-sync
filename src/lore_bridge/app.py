@@ -60,7 +60,7 @@ DYNAMIC_SHEET_TEMPLATE_ID = os.environ.get("DYNAMIC_SHEET_TEMPLATE_ID", "").stri
 
 app = FastAPI(
     title="Sindrel Lore Bridge",
-    version="0.8.1",
+    version="0.8.2",
     description="Bidirectional Obsidian Portal ↔ GitHub lore sync bridge with pull-through conflict protection.",
 )
 

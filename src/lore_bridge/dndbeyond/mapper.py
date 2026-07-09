@@ -553,7 +553,12 @@ def _activation_bucket(action: dict[str, Any]) -> str:
 
 
 def _action_detail_line(action: dict[str, Any], data: dict[str, Any]) -> str:
-    snippet = _snippet_from_fields(action.get("snippet") or "", action.get("description") or "", data=data)
+    snippet = _snippet_from_fields(
+        action.get("snippet") or "",
+        action.get("description") or "",
+        data=data,
+        placeholder_values={"limiteduse": action.get("limitedUse")},
+    )
     name = action.get("name") or "Action"
     if snippet:
         return _named_detail_line(name, snippet)
@@ -641,6 +646,7 @@ def _limited_use(data: dict[str, Any]) -> str:
                     action.get("snippet") or "",
                     action.get("description") or "",
                     data=data,
+                    placeholder_values={"limiteduse": limited},
                 )
                 reset = {1: "short rest", 2: "long rest", 3: "day", 4: "none"}.get(limited.get("resetType") or 0, "rest")
                 name = action.get("name") or "Feature"
@@ -1118,12 +1124,13 @@ def _snippet_from_fields(
     *,
     data: dict[str, Any] | None,
     level_scales: list[dict[str, Any]] | None = None,
+    placeholder_values: dict[str, Any] | None = None,
 ) -> str:
-    cleaned = _clean_snippet(snippet, data=data, level_scales=level_scales) if snippet else ""
+    cleaned = _clean_snippet(snippet, data=data, level_scales=level_scales, placeholder_values=placeholder_values) if snippet else ""
     if _snippet_looks_broken(cleaned) and description:
-        cleaned = _clean_snippet(description, data=data, level_scales=level_scales)
+        cleaned = _clean_snippet(description, data=data, level_scales=level_scales, placeholder_values=placeholder_values)
     elif not cleaned and description:
-        cleaned = _clean_snippet(description, data=data, level_scales=level_scales)
+        cleaned = _clean_snippet(description, data=data, level_scales=level_scales, placeholder_values=placeholder_values)
     return cleaned
 
 
@@ -1191,11 +1198,24 @@ def _resolve_ddb_placeholder(
     prof: int,
     scores: dict[str, int],
     level_scales: list[dict[str, Any]] | None,
+    placeholder_values: dict[str, Any] | None = None,
 ) -> str | None:
     unsigned = False
     if token.endswith("#unsigned"):
         unsigned = True
         token = token[:-9]
+
+    token_key = token.lower()
+    if placeholder_values and token_key in placeholder_values:
+        value = placeholder_values[token_key]
+        if isinstance(value, dict):
+            uses = int(value.get("maxUses") or 0)
+            if value.get("useProficiencyBonus"):
+                uses += prof
+            return str(uses) if uses else None
+        if value not in (None, ""):
+            return str(value)
+        return None
 
     if token == "scalevalue":
         scale = _scale_from_level_scales(level_scales, level)
@@ -1254,6 +1274,7 @@ def _replace_ddb_placeholders(
     *,
     data: dict[str, Any],
     level_scales: list[dict[str, Any]] | None = None,
+    placeholder_values: dict[str, Any] | None = None,
 ) -> str:
     mods = _active_modifiers(data)
     scores = _ability_scores(data, mods)
@@ -1267,6 +1288,7 @@ def _replace_ddb_placeholders(
             prof=prof,
             scores=scores,
             level_scales=level_scales,
+            placeholder_values=placeholder_values,
         )
         return resolved if resolved is not None else ""
 
@@ -1278,10 +1300,11 @@ def _clean_snippet(
     *,
     data: dict[str, Any] | None = None,
     level_scales: list[dict[str, Any]] | None = None,
+    placeholder_values: dict[str, Any] | None = None,
 ) -> str:
     text = re.sub(r"<[^>]+>", " ", value or "")
     if data is not None:
-        text = _replace_ddb_placeholders(text, data=data, level_scales=level_scales)
+        text = _replace_ddb_placeholders(text, data=data, level_scales=level_scales, placeholder_values=placeholder_values)
     text = re.sub(r"\{\{[^}]+\}\}", "", text)
     return " ".join(text.split())
 
@@ -1344,7 +1367,12 @@ def _plain_weapon_attack_lines(data: dict[str, Any], scores: dict[str, int], pro
 
 
 def _plain_action_detail_line(action: dict[str, Any], data: dict[str, Any]) -> str:
-    snippet = _snippet_from_fields(action.get("snippet") or "", action.get("description") or "", data=data)
+    snippet = _snippet_from_fields(
+        action.get("snippet") or "",
+        action.get("description") or "",
+        data=data,
+        placeholder_values={"limiteduse": action.get("limitedUse")},
+    )
     name = action.get("name") or "Action"
     return _plain_named_detail_line(name, snippet)
 
