@@ -1,0 +1,83 @@
+# Obsidian Portal dynamic_sheet keys for the sindrel_beyond DST.
+# Matches src/lore_bridge/dndbeyond/templates/sheet.html + metadata/ddb-sheet.css.
+
+slug: sindrel_beyond
+game_system: D&D 5E
+version: 2
+
+sections:
+  header:
+    class_summary: "Paladin (Oath of Vengeance) 3"
+    prof_bonus: "+2"
+    player_campaign: "Player Name · The Lords of Sindrel"
+    avatar_url: "https://www.dndbeyond.com/avatars/example.jpeg"
+
+  defenses:
+    ac: "18"
+    hp_current: "28"
+    hp_max: "28"
+    speed: "25 ft."
+    initiative: "+1"
+    hit_dice: "3d10"
+
+  abilities:
+    str: "18 (+4)"
+    dex: "12 (+1)"
+    con: "15 (+2)"
+    int: "9 (-1)"
+    wis: "10 (+0)"
+    cha: "18 (+4)"
+
+  saves:
+    str_save: "+4"
+    dex_save: "+1"
+    con_save: "+2"
+    int_save: "-1"
+    wis_save: "+2 *"
+    cha_save: "+6 *"
+
+  skills_senses:
+    skills: |
+      Athletics +4 *
+      Intimidation +6 *
+      Perception +2
+    passive_perception: "12"
+    passive_investigation: "9"
+    passive_insight: "10"
+
+  combat:
+    actions: |
+      Longsword. +6 to hit, melee 5 ft., 1d8+4 slashing.
+    bonus_actions: |
+      Divine Smite. When you hit with a melee weapon attack, expend a spell slot.
+    reactions: ""
+
+  proficiencies:
+    proficiencies: "All armor, shields; martial weapons; simple weapons"
+    languages: "Common, Gnomish"
+    tools: "Disguise kit, forgery kit"
+
+  spellcasting:
+    spellcasting_ability: "cha"
+    spell_save_dc: "14"
+    spell_attack: "+6"
+    spell_slots: |
+      1st 3
+    spells_prepared: |
+      Level 1: Bless, Cure Wounds, Shield of Faith
+    spells_json: |
+      [{"name":"Bless","level":1,"level_label":"1st","school":"enchantment","concentration":true,"ritual":false,"body":"You bless up to three creatures..."},{"name":"Guidance","level":0,"level_label":"Cantrip","school":"divination","concentration":true,"ritual":false,"body":"You touch one willing creature..."}]
+
+  sync_meta:
+    ddb_last_sync: "2026-07-08 16:00 UTC"
+
+git_frontmatter:
+  dndbeyond_id: "156087500"
+  dndbeyond_url: "https://www.dndbeyond.com/characters/156087500"
+  dndbeyond_synced_at: "2026-07-08T16:00:00Z"
+  dynamic_sheet_template_id: "38274b74909343e1a3e95400091308c3"
+
+notes:
+  - Features & Traits stay in game_master_info (GM-only), not dynamic_sheet.
+  - Limited use, inventory, race/background/alignment/inspiration omitted from player sheet.
+  - Re-sync preserves player-edited hp_current from Git frontmatter.

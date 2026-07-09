@@ -6,22 +6,25 @@ from importlib import resources
 from typing import Any
 
 _PRE_BLOCK_KEYS = {
-    "skills",
     "proficiencies",
     "languages",
     "tools",
     "spell_slots",
     "spells_prepared",
+    "limited_use",
 }
 
 _HTML_BLOCK_KEYS = {
     "features_traits",
+    "skills",
 }
 
 _RAW_HTML_KEYS = {
     "avatar_img",
     "spellcasting_section",
     "combat_section",
+    "limited_use_section",
+    "status_section",
 }
 
 
@@ -38,6 +41,31 @@ def render_sheet(context: dict[str, Any]) -> str:
     combat = str(context.get("combat_actions") or "").strip()
     context["combat_section"] = (
         f'<div class="ddb-section">\n{combat}\n</div>' if combat else ""
+    )
+    limited_use = str(context.get("limited_use") or "").strip()
+    context["limited_use_section"] = (
+        '<div class="ddb-section">\n'
+        '<h2 class="ddb-section-title">Class Resources</h2>\n'
+        f'<div class="ddb-block">{_pre_block(limited_use)}</div>\n'
+        "</div>"
+        if limited_use
+        else ""
+    )
+    conditions = str(context.get("conditions") or "").strip()
+    death_saves = str(context.get("death_saves") or "").strip()
+    status_parts: list[str] = []
+    if conditions:
+        status_parts.append(
+            f'<div class="ddb-kv"><span class="ddb-label">Conditions</span>'
+            f'<span class="ddb-kv-value">{html_text(conditions)}</span></div>'
+        )
+    if death_saves:
+        status_parts.append(
+            f'<div class="ddb-kv"><span class="ddb-label">Death Saves</span>'
+            f'<span class="ddb-kv-value">{html_text(death_saves)}</span></div>'
+        )
+    context["status_section"] = (
+        f'<div class="ddb-status-row">{"".join(status_parts)}</div>' if status_parts else ""
     )
     return _render_partial("sheet.html", context).strip()
 

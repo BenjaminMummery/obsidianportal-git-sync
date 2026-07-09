@@ -168,8 +168,28 @@
 }
 
 .ddb-sheet .ddb-block.ddb-skills {
-  column-count: 2;
-  column-gap: 1.25rem;
+  column-count: 1;
+}
+
+.ddb-sheet .ddb-skill-group {
+  margin-bottom: 0.55rem;
+}
+
+.ddb-sheet .ddb-skill-group:last-child {
+  margin-bottom: 0;
+}
+
+.ddb-sheet .ddb-status-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.65rem;
+  margin-top: 0.65rem;
+}
+
+@media (max-width: 720px) {
+  .ddb-sheet .ddb-status-row {
+    grid-template-columns: 1fr;
+  }
 }
 
 .ddb-sheet .ddb-sheet-gm {
@@ -183,6 +203,10 @@
 
   .ddb-sheet .ddb-block.ddb-skills {
     column-count: 1;
+  }
+
+  .ddb-sheet .ddb-status-row {
+    grid-template-columns: 1fr;
   }
 
   .ddb-sheet .ddb-header {

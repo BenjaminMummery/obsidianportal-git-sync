@@ -5,7 +5,7 @@ from typing import Any
 
 from lore_bridge.dndbeyond.fetch import DdbFetchError, fetch_character
 from lore_bridge.dndbeyond.gm import merge_ddb_gm_features
-from lore_bridge.dndbeyond.mapper import map_character
+from lore_bridge.dndbeyond.mapper import map_character, map_dynamic_sheet
 from lore_bridge.dndbeyond.render import render_gm_features, render_sheet
 
 
@@ -51,6 +51,7 @@ def sync_from_dndbeyond_impl(
     TreeChange: type,
     LORE_CHARACTERS_DIR: str,
     progress: Any | None = None,
+    dynamic_sheet_template_id: str | None = None,
 ) -> DdbSyncResult:
     paths = sorted(
         path
@@ -89,6 +90,16 @@ def sync_from_dndbeyond_impl(
                 render_gm_features(sheet_data),
             )
             fm = dict(fm)
+            ds = map_dynamic_sheet(data, synced_at=synced_at)
+            existing_ds = fm.get("dynamic_sheet") or {}
+            if isinstance(existing_ds, dict):
+                if existing_ds.get("hp_current") not in (None, ""):
+                    ds["hp_current"] = str(existing_ds["hp_current"])
+                if existing_ds.get("temp_hp") not in (None, ""):
+                    ds["temp_hp"] = str(existing_ds["temp_hp"])
+            fm["dynamic_sheet"] = ds
+            if dynamic_sheet_template_id:
+                fm["dynamic_sheet_template_id"] = dynamic_sheet_template_id
             fm["dndbeyond_synced_at"] = synced_at.strftime("%Y-%m-%dT%H:%M:%SZ")
             if not fm.get("dndbeyond_url"):
                 fm["dndbeyond_url"] = f"https://www.dndbeyond.com/characters/{ddb_id}"

@@ -56,6 +56,7 @@ LEGACY_FILE_EXT = ".md"
 OP_AUTHOR_ID = os.environ.get("OP_AUTHOR_ID", "")
 ALLOW_CREATE_FROM_GIT = os.environ.get("ALLOW_CREATE_FROM_GIT", "true").lower() == "true"
 ALLOW_DELETE_FROM_GIT = os.environ.get("ALLOW_DELETE_FROM_GIT", "true").lower() == "true"
+DYNAMIC_SHEET_TEMPLATE_ID = os.environ.get("DYNAMIC_SHEET_TEMPLATE_ID", "").strip() or None
 
 app = FastAPI(
     title="Sindrel Lore Bridge",
@@ -1529,6 +1530,7 @@ def sync_from_dndbeyond_bridge(progress: ProgressReporter | None = None) -> DdbS
         TreeChange=TreeChange,
         LORE_CHARACTERS_DIR=LORE_CHARACTERS_DIR,
         progress=progress,
+        dynamic_sheet_template_id=DYNAMIC_SHEET_TEMPLATE_ID,
     )
     return DdbSyncResponse(**result.model_dump())
 

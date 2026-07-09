@@ -5,6 +5,7 @@
       <p class="ddb-subtitle">{{class_summary}}</p>
       <ul class="ddb-meta">
         <li><span class="ddb-label">Proficiency</span> {{prof_bonus}}</li>
+        <li><span class="ddb-label">Inspiration</span> {{inspiration}}</li>
       </ul>
       <p class="ddb-links">{{player_campaign}}</p>
     </div>
@@ -21,10 +22,12 @@
         <span class="ddb-pill-sep">/</span>
         <span class="ddb-pill-value">{{hp_max}}</span>
       </div>
+      <div class="ddb-pill"><span class="ddb-pill-label">Temp</span><span class="ddb-pill-value">{{temp_hp}}</span></div>
       <div class="ddb-pill"><span class="ddb-pill-label">Speed</span><span class="ddb-pill-value">{{speed}}</span></div>
       <div class="ddb-pill"><span class="ddb-pill-label">Init</span><span class="ddb-pill-value">{{initiative}}</span></div>
       <div class="ddb-pill"><span class="ddb-pill-label">Hit Dice</span><span class="ddb-pill-value">{{hit_dice}}</span></div>
     </div>
+    {{status_section}}
   </div>
 
   <div class="ddb-columns">
@@ -61,6 +64,8 @@
   </div>
 
   {{combat_section}}
+
+  {{limited_use_section}}
 
   <div class="ddb-columns ddb-bottom-row">
     <div class="ddb-section ddb-half">

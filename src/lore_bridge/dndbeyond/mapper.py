@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 from datetime import datetime, timezone
 from typing import Any
@@ -48,6 +49,76 @@ SAVE_SUBTYPES = {
     "wis": "wisdom-saving-throws",
     "cha": "charisma-saving-throws",
 }
+
+
+def map_dynamic_sheet(data: dict[str, Any], *, synced_at: datetime | None = None) -> dict[str, str]:
+    sheet = map_character(data, synced_at=synced_at)
+    mods = _active_modifiers(data)
+    scores = _ability_scores(data, mods)
+    prof = _proficiency_bonus(_total_level(data))
+    combat = _plain_combat_buckets(data, scores, prof)
+
+    player = (data.get("username") or "").strip()
+    campaign = ((data.get("campaign") or {}).get("name") or "").strip()
+    avatar_url = ((data.get("decorations") or {}).get("avatarUrl") or "").strip()
+
+    result: dict[str, str] = {
+        "name": sheet["name"],
+        "class_summary": sheet["class_summary"],
+        "prof_bonus": sheet["prof_bonus"],
+        "player_campaign": _plain_player_campaign(player, campaign),
+        "avatar_url": avatar_url,
+        "ac": sheet["ac"],
+        "hp_current": sheet["hp_current"],
+        "hp_max": sheet["hp_max"],
+        "speed": sheet["speed"],
+        "initiative": sheet["initiative"],
+        "hit_dice": sheet["hit_dice"],
+        "str": sheet["str"],
+        "dex": sheet["dex"],
+        "con": sheet["con"],
+        "int": sheet["int"],
+        "wis": sheet["wis"],
+        "cha": sheet["cha"],
+        "str_save": sheet["str_save"],
+        "dex_save": sheet["dex_save"],
+        "con_save": sheet["con_save"],
+        "int_save": sheet["int_save"],
+        "wis_save": sheet["wis_save"],
+        "cha_save": sheet["cha_save"],
+        "skills": _skills_by_ability(scores, prof, mods, html=False),
+        "passive_perception": sheet["passive_perception"],
+        "passive_investigation": sheet["passive_investigation"],
+        "passive_insight": sheet["passive_insight"],
+        "inspiration": sheet["inspiration"],
+        "temp_hp": sheet["temp_hp"],
+        "conditions": sheet["conditions"],
+        "death_saves": sheet["death_saves"],
+        "limited_use": sheet["limited_use"],
+        "actions": combat["actions"],
+        "bonus_actions": combat["bonus_actions"],
+        "reactions": combat["reactions"],
+        "proficiencies": sheet["proficiencies"],
+        "languages": sheet["languages"],
+        "tools": sheet["tools"],
+        "ddb_last_sync": sheet["ddb_last_sync"],
+        "spellcasting_ability": "",
+        "spell_save_dc": "",
+        "spell_attack": "",
+        "spell_slots": "",
+        "spells_prepared": "",
+        "spells_json": "[]",
+    }
+
+    if sheet["has_spellcasting"]:
+        result["spellcasting_ability"] = sheet["spellcasting_ability"]
+        result["spell_save_dc"] = sheet["spell_save_dc"]
+        result["spell_attack"] = sheet["spell_attack"]
+        result["spell_slots"] = sheet["spell_slots"]
+        result["spells_prepared"] = sheet["spells_prepared"]
+        result["spells_json"] = sheet["spells_json"]
+
+    return result
 
 
 def map_character(data: dict[str, Any], *, synced_at: datetime | None = None) -> dict[str, str]:
@@ -99,6 +170,8 @@ def map_character(data: dict[str, Any], *, synced_at: datetime | None = None) ->
         "speed": speed,
         "initiative": initiative,
         "hit_dice": _hit_dice(data),
+        "conditions": _conditions(data),
+        "death_saves": _death_saves(data),
         "str": _ability_line(scores["str"]),
         "dex": _ability_line(scores["dex"]),
         "con": _ability_line(scores["con"]),
@@ -111,12 +184,12 @@ def map_character(data: dict[str, Any], *, synced_at: datetime | None = None) ->
         "int_save": _save_value("int", scores, prof, mods),
         "wis_save": _save_value("wis", scores, prof, mods),
         "cha_save": _save_value("cha", scores, prof, mods),
-        "skills": _skills(scores, prof, mods),
+        "skills": _skills_by_ability(scores, prof, mods, html=True),
         "passive_perception": str(10 + _skill_bonus("perception", scores, prof, mods)),
         "passive_investigation": str(10 + _skill_bonus("investigation", scores, prof, mods)),
         "passive_insight": str(10 + _skill_bonus("insight", scores, prof, mods)),
         "combat_actions": _combat_actions(data, scores, prof),
-        "limited_use": _limited_use(data),
+        "limited_use": _limited_use_deduped(data, scores, prof),
         "features_traits": _features(data, level),
         "proficiencies": _proficiencies(mods),
         "languages": _languages(mods),
@@ -127,6 +200,7 @@ def map_character(data: dict[str, Any], *, synced_at: datetime | None = None) ->
         "spell_attack": spell_attack,
         "spell_slots": spell_slots,
         "spells_prepared": spells_prepared,
+        "spells_json": _spells_json(data),
         "has_spellcasting": has_spellcasting,
         "ddb_last_sync": sync_label,
         "avatar_url": avatar_url,
@@ -317,6 +391,95 @@ def _skills(scores: dict[str, int], prof: int, mods: list[dict[str, Any]]) -> st
         mark = " *" if proficient else ""
         lines.append(f"{SKILL_LABELS[skill]} {_signed(bonus)}{mark}")
     return "\n".join(lines)
+
+
+def _skills_by_ability(scores: dict[str, int], prof: int, mods: list[dict[str, Any]], *, html: bool) -> str:
+    parts: list[str] = []
+    for stat_key in ("str", "dex", "con", "int", "wis", "cha"):
+        lines: list[str] = []
+        for skill, ability in SKILLS.items():
+            if ability != stat_key:
+                continue
+            bonus = _skill_bonus(skill, scores, prof, mods)
+            proficient = _has_proficiency(mods, skill) or _has_expertise(mods, skill)
+            mark = " *" if proficient else ""
+            lines.append(f"{SKILL_LABELS[skill]} {_signed(bonus)}{mark}")
+        if not lines:
+            continue
+        if html:
+            parts.append(f'<h3 class="ddb-subsection-title">{STAT_LABELS[stat_key]}</h3>')
+            parts.append(
+                '<div class="ddb-block ddb-skill-group">'
+                + "<br>\n".join(html_text(line) for line in lines)
+                + "</div>"
+            )
+        else:
+            parts.append(STAT_LABELS[stat_key])
+            parts.extend(lines)
+            parts.append("")
+    if html:
+        return "\n".join(parts)
+    return "\n".join(parts).strip()
+
+
+def _conditions(data: dict[str, Any]) -> str:
+    names: list[str] = []
+    for condition in data.get("conditions") or []:
+        if isinstance(condition, str):
+            names.append(condition.strip())
+            continue
+        if not isinstance(condition, dict):
+            continue
+        name = (condition.get("name") or (condition.get("definition") or {}).get("name") or "").strip()
+        if name:
+            names.append(name)
+    return ", ".join(names)
+
+
+def _death_saves(data: dict[str, Any]) -> str:
+    saves = data.get("deathSaves") or {}
+    if saves.get("isStabilized"):
+        return "Stabilized"
+    fails = saves.get("failCount")
+    successes = saves.get("successCount")
+    if fails in (None, 0) and successes in (None, 0):
+        return ""
+    return f"Failures {fails or 0}, Successes {successes or 0}"
+
+
+def _combat_entry_names(*bucket_texts: str) -> set[str]:
+    names: set[str] = set()
+    for text in bucket_texts:
+        for line in str(text or "").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            if ". " in line:
+                names.add(line.split(". ", 1)[0].strip().lower())
+            elif "." in line:
+                names.add(line.split(".", 1)[0].strip().lower())
+            else:
+                names.add(line.lower())
+    return names
+
+
+def _limited_use_deduped(data: dict[str, Any], scores: dict[str, int], prof: int) -> str:
+    raw = _limited_use(data)
+    if not raw or raw == "—":
+        return ""
+    combat = _plain_combat_buckets(data, scores, prof)
+    combat_names = _combat_entry_names(
+        combat.get("actions", ""),
+        combat.get("bonus_actions", ""),
+        combat.get("reactions", ""),
+    )
+    kept: list[str] = []
+    for line in raw.splitlines():
+        name = line.split(" (", 1)[0].strip().lower()
+        if name in combat_names:
+            continue
+        kept.append(line)
+    return "\n".join(kept)
 
 
 def _activation_bucket(action: dict[str, Any]) -> str:
@@ -524,20 +687,68 @@ def _spellcasting_ability_id(data: dict[str, Any]) -> int | None:
     return None
 
 
-def _spell_slots(data: dict[str, Any], level: int) -> str:
-    lines: list[str] = []
-    rules = None
+def _spell_slot_table_maxes(data: dict[str, Any]) -> dict[int, int]:
+    maxes: dict[int, int] = {}
     for cls in data.get("classes") or []:
         definition = cls.get("definition") or {}
-        if definition.get("canCastSpells"):
-            rules = definition.get("spellRules") or {}
-            break
-    slot_table = (rules or {}).get("levelSpellSlots") or []
-    slot_maxes = slot_table[level] if level < len(slot_table) else []
-    for idx, max_slots in enumerate(slot_maxes or [], start=1):
+        if not definition.get("canCastSpells"):
+            continue
+        cls_level = cls.get("level") or 0
+        rules = definition.get("spellRules") or {}
+        slot_table = rules.get("levelSpellSlots") or []
+        if cls_level >= len(slot_table):
+            continue
+        for idx, slots in enumerate(slot_table[cls_level] or [], start=1):
+            if slots:
+                maxes[idx] = max(maxes.get(idx, 0), slots)
+    return maxes
+
+
+def _spell_slots(data: dict[str, Any], level: int) -> str:
+    usage = {
+        int(slot["level"]): slot
+        for slot in (data.get("spellSlots") or [])
+        if slot.get("level") is not None
+    }
+    maxes = _spell_slot_table_maxes(data)
+    if not maxes:
+        rules = None
+        for cls in data.get("classes") or []:
+            definition = cls.get("definition") or {}
+            if definition.get("canCastSpells"):
+                rules = definition.get("spellRules") or {}
+                break
+        slot_table = (rules or {}).get("levelSpellSlots") or []
+        slot_maxes = slot_table[level] if level < len(slot_table) else []
+        for idx, max_slots in enumerate(slot_maxes or [], start=1):
+            if max_slots:
+                maxes[idx] = max_slots
+
+    lines: list[str] = []
+    levels = sorted(set(maxes) | {lvl for lvl, slot in usage.items() if (slot.get("used") or 0) > 0})
+    for lvl in levels:
+        max_slots = maxes.get(lvl, 0)
+        used = int((usage.get(lvl) or {}).get("used") or 0)
+        if not max_slots:
+            available = int((usage.get(lvl) or {}).get("available") or 0)
+            max_slots = used + available
         if not max_slots:
             continue
-        lines.append(f"{idx}{_ordinal_suffix(idx)} {max_slots}")
+        remaining = max(0, max_slots - used)
+        lines.append(f"{lvl}{_ordinal_suffix(lvl)} {remaining}/{max_slots}")
+
+    pact_lines: list[str] = []
+    for slot in data.get("pactMagic") or []:
+        lvl = int(slot.get("level") or 0)
+        if lvl != 1:
+            continue
+        max_slots = int(slot.get("available") or 0) + int(slot.get("used") or 0)
+        if not max_slots:
+            continue
+        used = int(slot.get("used") or 0)
+        remaining = max(0, max_slots - used)
+        pact_lines.append(f"Pact {remaining}/{max_slots}")
+    lines.extend(pact_lines)
     return "\n".join(lines) if lines else "—"
 
 
@@ -553,7 +764,7 @@ def _spells_prepared(data: dict[str, Any]) -> str:
         by_level: dict[int, list[str]] = {}
         for spell in class_spell.get("spells") or []:
             definition = spell.get("definition") or {}
-            if not (spell.get("prepared") or spell.get("alwaysPrepared") or definition.get("level") == 0):
+            if not _spell_included(spell, definition):
                 continue
             level = definition.get("level") or 0
             by_level.setdefault(level, []).append(definition.get("name") or "Spell")
@@ -561,6 +772,68 @@ def _spells_prepared(data: dict[str, Any]) -> str:
             label = "Cantrips" if level == 0 else f"Level {level}"
             lines.append(f"{label}: {', '.join(sorted(by_level[level]))}")
     return "\n".join(lines) if lines else "—"
+
+
+def _spell_included(spell: dict[str, Any], definition: dict[str, Any]) -> bool:
+    level = definition.get("level") or 0
+    if level == 0:
+        return True
+    if spell.get("prepared") or spell.get("alwaysPrepared"):
+        return True
+    return bool(definition.get("ritual"))
+
+
+def _spell_level_label(level: int) -> str:
+    if level == 0:
+        return "Cantrip"
+    return f"{level}{_ordinal_suffix(level)}"
+
+
+def _spell_plain_body(definition: dict[str, Any]) -> str:
+    snippet = _clean_snippet(definition.get("snippet") or "")
+    if snippet:
+        return snippet
+    text = definition.get("description") or ""
+    text = re.sub(r"<br\s*/?>", "\n", text, flags=re.I)
+    text = re.sub(r"</p>", "\n\n", text, flags=re.I)
+    text = re.sub(r"<li>", "\n• ", text, flags=re.I)
+    text = re.sub(r"<[^>]+>", "", text)
+    text = re.sub(r"\s+\n", "\n", text)
+    return re.sub(r"\n{3,}", "\n\n", text).strip()
+
+
+def _collect_spells(data: dict[str, Any]) -> list[dict[str, Any]]:
+    seen: set[str] = set()
+    spells: list[dict[str, Any]] = []
+    for class_spell in data.get("classSpells") or []:
+        for spell in class_spell.get("spells") or []:
+            definition = spell.get("definition") or {}
+            name = (definition.get("name") or "Spell").strip()
+            key = name.lower()
+            if key in seen or not _spell_included(spell, definition):
+                continue
+            seen.add(key)
+            level = int(definition.get("level") or 0)
+            spells.append(
+                {
+                    "name": name,
+                    "level": level,
+                    "level_label": _spell_level_label(level),
+                    "school": (definition.get("school") or "").strip().lower(),
+                    "concentration": bool(definition.get("concentration")),
+                    "ritual": bool(definition.get("ritual")),
+                    "body": _spell_plain_body(definition),
+                }
+            )
+    spells.sort(key=lambda item: (item["level"], item["name"].lower()))
+    return spells
+
+
+def _spells_json(data: dict[str, Any]) -> str:
+    spells = _collect_spells(data)
+    if not spells:
+        return "[]"
+    return json.dumps(spells, ensure_ascii=False)
 
 
 def _clean_snippet(value: str) -> str:
@@ -575,3 +848,132 @@ def _named_detail_line(name: str, detail: str) -> str:
     if detail:
         return f"<strong>{html_text(name)}.</strong> {html_text(detail)}"
     return f"<strong>{html_text(name)}</strong>"
+
+
+def _plain_named_detail_line(name: str, detail: str) -> str:
+    name = (name or "").strip()
+    detail = (detail or "").strip()
+    if detail:
+        return f"{name}. {detail}"
+    return name
+
+
+def _saving_throws(scores: dict[str, int], prof: int, mods: list[dict[str, Any]]) -> str:
+    lines: list[str] = []
+    for key in STAT_LABELS:
+        bonus = _ability_mod(scores[key])
+        proficient = _has_proficiency(mods, SAVE_SUBTYPES[key])
+        if proficient:
+            bonus += prof
+        mark = " *" if proficient else ""
+        lines.append(f"{STAT_LABELS[key]} {_signed(bonus)}{mark}")
+    return "\n".join(lines)
+
+
+def _plain_weapon_attack_lines(data: dict[str, Any], scores: dict[str, int], prof: int) -> list[str]:
+    lines: list[str] = []
+    for item in data.get("inventory") or []:
+        if not _item_active(item):
+            continue
+        definition = item.get("definition") or {}
+        if definition.get("filterType") != "Weapon":
+            continue
+        name = definition.get("name") or "Weapon"
+        damage = ((definition.get("damage") or {}).get("diceString") or "").strip()
+        damage_type = (definition.get("damageType") or "").strip()
+        attack_stat = STAT_IDS.get(definition.get("attackStat") or 0, "str")
+        attack_bonus = prof + _ability_mod(scores[attack_stat])
+        range_obj = definition.get("range")
+        range_val = ""
+        if isinstance(range_obj, dict):
+            range_val = range_obj.get("range") or ""
+        elif isinstance(range_obj, int):
+            range_val = range_obj
+        range_text = f", range {range_val} ft." if range_val else ", melee 5 ft."
+        detail = f"{_signed(attack_bonus)} to hit{range_text}"
+        if damage:
+            detail += f", {damage}"
+            if damage_type:
+                detail += f" {damage_type.lower()}"
+        lines.append(_plain_named_detail_line(name, detail))
+    return lines
+
+
+def _plain_action_detail_line(action: dict[str, Any]) -> str:
+    snippet = _clean_snippet(action.get("snippet") or action.get("description") or "")
+    name = action.get("name") or "Action"
+    return _plain_named_detail_line(name, snippet)
+
+
+def _plain_player_campaign(player: str, campaign: str) -> str:
+    if player and campaign:
+        return f"{player} · {campaign}"
+    return player or campaign or ""
+
+
+def _plain_combat_buckets(data: dict[str, Any], scores: dict[str, int], prof: int) -> dict[str, str]:
+    buckets: dict[str, list[str]] = {
+        "actions": _plain_weapon_attack_lines(data, scores, prof),
+        "bonus_actions": [],
+        "reactions": [],
+    }
+
+    action_groups = data.get("actions") or {}
+    if isinstance(action_groups, dict):
+        for group in action_groups.values():
+            if not group:
+                continue
+            for action in group:
+                buckets[_activation_bucket(action)].append(_plain_action_detail_line(action))
+
+    for action in data.get("customActions") or []:
+        buckets[_activation_bucket(action)].append(_plain_action_detail_line(action))
+
+    return {key: "\n".join(lines) if lines else "" for key, lines in buckets.items()}
+
+
+def _plain_actions(data: dict[str, Any], scores: dict[str, int], prof: int) -> str:
+    lines = _plain_weapon_attack_lines(data, scores, prof)
+
+    action_groups = data.get("actions") or {}
+    if isinstance(action_groups, dict):
+        for group in action_groups.values():
+            if not group:
+                continue
+            for action in group:
+                lines.append(_plain_action_detail_line(action))
+
+    for action in data.get("customActions") or []:
+        lines.append(_plain_action_detail_line(action))
+
+    return "\n".join(lines) if lines else "—"
+
+
+def _plain_limited_use(data: dict[str, Any]) -> str:
+    limited = _limited_use(data)
+    return limited if limited else "—"
+
+
+def _plain_features(data: dict[str, Any], level: int) -> str:
+    lines: list[str] = []
+    for trait in ((data.get("race") or {}).get("racialTraits") or []):
+        definition = trait.get("definition") or {}
+        snippet = _clean_snippet(definition.get("snippet") or definition.get("description") or "")
+        name = definition.get("name") or "Trait"
+        lines.append(_plain_named_detail_line(name, snippet))
+    for cls in data.get("classes") or []:
+        for feature in cls.get("classFeatures") or []:
+            definition = feature.get("definition") or {}
+            required = definition.get("requiredLevel") or 0
+            if required and level < required:
+                continue
+            snippet = _clean_snippet(definition.get("snippet") or definition.get("description") or "")
+            name = definition.get("name") or "Feature"
+            if snippet or name:
+                lines.append(_plain_named_detail_line(name, snippet))
+    for feat in data.get("feats") or []:
+        definition = feat.get("definition") or {}
+        snippet = _clean_snippet(definition.get("snippet") or definition.get("description") or "")
+        name = definition.get("name") or "Feat"
+        lines.append(_plain_named_detail_line(name, snippet))
+    return "\n".join(lines) if lines else "—"

@@ -122,6 +122,10 @@ Wiki pages with GM-only info use `<!-- GM_INFO_START -->` / `<!-- GM_INFO_END --
 
 **Important:** IDE Markdown preview will not match what Obsidian Portal renders. Do not convert Textile to Markdown before publishing.
 
+### Character sheet template (D&D Beyond-style)
+
+For player characters synced from D&D Beyond, use the custom Obsidian Portal DST in `metadata/dst/sindrel-beyond/`. It mirrors DDB section layout (defenses, abilities, skills, actions, spellcasting, etc.) as display-only `dynamic_sheet` fields. Install instructions and the field map are in that folder's README.
+
 If you put this repo in front of players, remember that GM info may remain in Git history even after deletion.
 
 ---
