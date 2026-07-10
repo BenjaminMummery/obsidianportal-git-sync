@@ -1,6 +1,6 @@
 [project]
 name = "lore-bridge"
-version = "0.8.9"
+version = "0.9.0"
 description = "Obsidian Portal ↔ GitHub lore sync bridge"
 readme = "README.md"
 requires-python = ">=3.11"

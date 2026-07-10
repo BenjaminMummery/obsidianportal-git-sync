@@ -1,6 +1,6 @@
 # Sindrel Beyond character sheet (Obsidian Portal DST)
 
-DST-only layout: grey blockquote styling, combined ability/save/skill blocks, combat buckets, conditional spellcasting. Features & Traits remain in **GM Only** (`game_master_info`), not here.
+DST-only layout: grey blockquote styling, combined ability/save/skill blocks, combat buckets, conditional spellcasting, collapsible Features & Traits alongside Description and Biography.
 
 **Slug:** `sindrel_beyond` (installed campaign DST may show `sinbdrel_beyond` — JS handles both)  
 **Game system:** D&D 5E
@@ -52,11 +52,13 @@ Run `lore-bridge ddb-sync` after bridge deploy to populate `dynamic_sheet` from 
 | Combat | `actions`, `bonus_actions`, `reactions` |
 | Proficiencies | `proficiencies`, `languages`, `tools` |
 | Spellcasting | `spellcasting_ability`, `spell_save_dc`, `spell_attack`, `spell_slots`, `spells_json` (collapsible cards; includes cantrips + ritual-only spells) |
+| Features & Traits | `features_traits` (HTML; synced from D&D Beyond) |
+| Companions | `companions_json` |
 | Sync | `ddb_last_sync` |
 
 Legacy keys (`str` … `cha`, `str_save` … `cha_save`, `skills`) are still synced for compatibility but not shown in the DST template.
 
-**Not on player sheet:** `features_traits`, `limited_use`, `equipment`, race/background/alignment/inspiration.
+**Not on player sheet:** `limited_use`, `equipment`, race/background/alignment/inspiration.
 
 ## Ability blocks
 

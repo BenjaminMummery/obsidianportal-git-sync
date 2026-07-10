@@ -14,6 +14,10 @@
     </div>
   </div>
 
+  <details class="ddb-collapse ddb-sheet-collapse">
+    <summary class="ddb-collapse-summary ddb-collapse-summary-panel">Character Sheet</summary>
+    <div class="ddb-collapse-body ddb-sheet-body">
+
   <div class="ddb-section ddb-defenses">
     <h2 class="ddb-section-title">Defenses</h2>
     <div class="ddb-pill-grid">
@@ -108,7 +112,37 @@
     <span class="dsf dsf_spells_json readonly ddb-spells-json"></span>
   </div>
 
-  <span class="dsf dsf_bio readonly ddb-sr-only" aria-hidden="true"></span>
+    </div>
+  </details>
+
+  <details class="ddb-collapse ddb-companions-collapse">
+    <summary class="ddb-collapse-summary ddb-collapse-summary-panel">Companions</summary>
+    <div class="ddb-collapse-body">
+      <div class="ddb-companion-blocks" id="ddb-companions-mount"></div>
+      <span class="dsf dsf_companions_json readonly ddb-companions-json"></span>
+    </div>
+  </details>
+
+  <details class="ddb-collapse ddb-character-collapse ddb-character-features-block">
+    <summary class="ddb-collapse-summary ddb-collapse-summary-panel">Features &amp; Traits</summary>
+    <div class="ddb-collapse-body">
+      <div class="dsf dsf_features_traits readonly ddb-character-prose op-character-prose"></div>
+    </div>
+  </details>
+
+  <details class="ddb-collapse ddb-character-collapse ddb-character-desc-block" open>
+    <summary class="ddb-collapse-summary ddb-collapse-summary-panel">Description</summary>
+    <div class="ddb-collapse-body">
+      <div class="dsf dsf_description readonly ddb-character-prose op-character-prose"></div>
+    </div>
+  </details>
+
+  <details class="ddb-collapse ddb-character-collapse ddb-character-bio-block" open>
+    <summary class="ddb-collapse-summary ddb-collapse-summary-panel">Biography</summary>
+    <div class="ddb-collapse-body">
+      <div class="dsf dsf_bio readonly ddb-character-prose op-character-prose"></div>
+    </div>
+  </details>
 
   <div class="ddb-footer">
     <p class="ddb-sync"><span class="ddb-label">D&amp;D Beyond sync</span> <span class="dsf dsf_ddb_last_sync readonly"></span></p>

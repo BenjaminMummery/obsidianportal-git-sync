@@ -83,6 +83,13 @@ SPELL_SCHOOLS = {
 }
 
 
+def _html_field(value: str) -> str:
+    text = str(value or "").strip()
+    if not text or text == "—":
+        return ""
+    return text.replace("\n", "<br>\r\n")
+
+
 def map_dynamic_sheet(data: dict[str, Any], *, synced_at: datetime | None = None) -> dict[str, str]:
     sheet = map_character(data, synced_at=synced_at)
     mods = _active_modifiers(data)
@@ -154,6 +161,10 @@ def map_dynamic_sheet(data: dict[str, Any], *, synced_at: datetime | None = None
         result["spell_slots_used_json"] = _spell_slots_used_json(data, _total_level(data))
         result["spells_prepared"] = sheet["spells_prepared"]
         result["spells_json"] = sheet["spells_json"]
+
+    features_traits = _html_field(sheet["features_traits"])
+    if features_traits:
+        result["features_traits"] = features_traits
 
     return result
 

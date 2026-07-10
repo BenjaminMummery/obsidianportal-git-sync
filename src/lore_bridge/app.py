@@ -22,6 +22,7 @@ from pydantic import BaseModel
 from rapidfuzz import fuzz
 from requests_oauthlib import OAuth1
 
+from lore_bridge.dndbeyond.gm import migrate_character_features
 from lore_bridge.dndbeyond.sync import DdbSyncResult, sync_from_dndbeyond_impl
 
 load_dotenv()
@@ -63,7 +64,7 @@ GITHUB_RETRY_STATUS_CODES = {429, 500, 502, 503, 504}
 
 app = FastAPI(
     title="Sindrel Lore Bridge",
-    version="0.8.9",
+    version="0.9.0",
     description="Bidirectional Obsidian Portal ↔ GitHub lore sync bridge with pull-through conflict protection.",
 )
 
@@ -1000,6 +1001,7 @@ def character_to_markdown(
     description = tagline_description.rstrip()
     bio = (character.get("bio") or "").rstrip()
     gm = (character.get("game_master_info") or "").rstrip()
+    fm, gm = migrate_character_features(fm, gm)
     content = rebuild_character_content(
         fm,
         ddb_sheet=ddb_sheet,
@@ -1395,6 +1397,8 @@ def publish_git_to_portal_impl(force_portal_pull: bool = True, progress: Progres
             description = parsed["description"]
             bio = parsed["bio"]
             gm_info = parsed["gm_info"]
+            if kind == "Character":
+                fm, gm_info = migrate_character_features(fm, gm_info)
             op_description = description if kind == "Character" and fm.get("dynamic_sheet_template_id") else (
                 op_character_description(ddb_sheet, description) if kind == "Character" else description
             )

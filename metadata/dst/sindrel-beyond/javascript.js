@@ -58,6 +58,14 @@ function _fieldText(container, className) {
   return (el.textContent || "").trim();
 }
 
+function _fieldHtml(container, className) {
+  var el = container.querySelector("." + className);
+  if (!el) {
+    return "";
+  }
+  return ((el.innerHTML || el.textContent || "") + "").trim();
+}
+
 function _hideIfEmpty(container, fieldClass, bucketSelector) {
   var text = _fieldText(container, fieldClass);
   var bucket = container.querySelector(bucketSelector);
@@ -458,6 +466,160 @@ function _renderSpellCards(container) {
   return true;
 }
 
+function _abilityCell(score, mod) {
+  var n = Number(mod);
+  var sign = !isNaN(n) && n >= 0 ? "+" : "";
+  return score + " (" + sign + mod + ")";
+}
+
+function _renderCompanionStat(companion) {
+  if (companion.html) {
+    var wrap = document.createElement("div");
+    wrap.className = "stat-block ddb-companion-stat";
+    wrap.innerHTML = companion.html;
+    return wrap;
+  }
+
+  var block = document.createElement("div");
+  block.className = "stat-block ddb-companion-stat";
+
+  var name = companion.name || "Companion";
+  var title = document.createElement("h3");
+  title.textContent = name;
+  block.appendChild(title);
+
+  if (companion.type_line) {
+    var type = document.createElement("p");
+    type.innerHTML = "<em>" + companion.type_line + "</em>";
+    block.appendChild(type);
+  }
+
+  var stats = document.createElement("p");
+  var statLines = [];
+  if (companion.ac != null && companion.ac !== "") {
+    statLines.push("<strong>Armor Class</strong> " + companion.ac);
+  }
+  if (companion.hp) {
+    statLines.push("<strong>Hit Points</strong> " + companion.hp);
+  }
+  if (companion.speed) {
+    statLines.push("<strong>Speed</strong> " + companion.speed);
+  }
+  if (companion.initiative) {
+    statLines.push("<strong>Initiative</strong> " + companion.initiative);
+  }
+  if (statLines.length) {
+    stats.innerHTML = statLines.join("<br>\n");
+    block.appendChild(stats);
+  }
+
+  var abilities = companion.abilities;
+  if (Array.isArray(abilities) && abilities.length === 6) {
+    block.appendChild(document.createElement("hr"));
+    var table = document.createElement("table");
+    var head = document.createElement("tr");
+    ["STR", "DEX", "CON", "INT", "WIS", "CHA"].forEach(function (label) {
+      var th = document.createElement("th");
+      th.textContent = label;
+      head.appendChild(th);
+    });
+    table.appendChild(head);
+    var row = document.createElement("tr");
+    abilities.forEach(function (pair) {
+      var td = document.createElement("td");
+      if (Array.isArray(pair)) {
+        td.textContent = _abilityCell(pair[0], pair[1]);
+      } else {
+        td.textContent = String(pair);
+      }
+      row.appendChild(td);
+    });
+    table.appendChild(row);
+    block.appendChild(table);
+  }
+
+  var meta = document.createElement("p");
+  var metaLines = [];
+  if (companion.skills) {
+    metaLines.push("<strong>Skills</strong> " + companion.skills);
+  }
+  if (companion.senses) {
+    metaLines.push("<strong>Senses</strong> " + companion.senses);
+  }
+  if (companion.languages) {
+    metaLines.push("<strong>Languages</strong> " + companion.languages);
+  }
+  if (companion.challenge) {
+    metaLines.push("<strong>Challenge</strong> " + companion.challenge);
+  }
+  if (companion.proficiency_bonus) {
+    metaLines.push("<strong>Proficiency Bonus</strong> " + companion.proficiency_bonus);
+  }
+  if (metaLines.length) {
+    block.appendChild(document.createElement("hr"));
+    meta.innerHTML = metaLines.join("<br>\n");
+    block.appendChild(meta);
+  }
+
+  if (companion.traits && companion.traits.length) {
+    block.appendChild(document.createElement("hr"));
+    companion.traits.forEach(function (trait) {
+      var p = document.createElement("p");
+      p.innerHTML =
+        "<strong>" + (trait.name || "") + ".</strong> " + (trait.text || "");
+      block.appendChild(p);
+    });
+  }
+
+  if (companion.actions && companion.actions.length) {
+    block.appendChild(document.createElement("hr"));
+    var actionsTitle = document.createElement("h4");
+    actionsTitle.textContent = "Actions";
+    block.appendChild(actionsTitle);
+    companion.actions.forEach(function (action) {
+      var p = document.createElement("p");
+      p.innerHTML =
+        "<strong>" + (action.name || "") + ".</strong> " + (action.text || "");
+      block.appendChild(p);
+    });
+  }
+
+  return block;
+}
+
+function _renderCompanions(container) {
+  var mount = container.querySelector("#ddb-companions-mount");
+  var raw = _fieldText(container, "dsf_companions_json");
+  if (!mount || !raw || raw === "[]") {
+    return false;
+  }
+
+  var companions;
+  try {
+    companions = JSON.parse(raw);
+  } catch (e) {
+    return false;
+  }
+  if (!Array.isArray(companions) || !companions.length) {
+    return false;
+  }
+
+  mount.innerHTML = "";
+  companions.forEach(function (companion) {
+    mount.appendChild(_renderCompanionStat(companion));
+  });
+  return true;
+}
+
+function _applyProseHeadingFolds(container) {
+  if (typeof window.opFoldHeadings !== "function") {
+    return;
+  }
+  container.querySelectorAll(".op-character-prose, .ddb-character-prose").forEach(function (prose) {
+    window.opFoldHeadings(prose, { defaultOpenLevel: 3, force: true });
+  });
+}
+
 function sindrel_beyond_dataPreLoad(options) {}
 
 function sindrel_beyond_dataPostLoad(options) {
@@ -508,6 +670,26 @@ function sindrel_beyond_dataPostLoad(options) {
     spellSection.style.display = "none";
   }
 
+  var sheetCollapse = container.querySelector(".ddb-sheet-collapse");
+  if (sheetCollapse) {
+    var sheetSections = sheetCollapse.querySelectorAll(".ddb-section");
+    var anySheetVisible = false;
+    sheetSections.forEach(function (section) {
+      if (section.style.display !== "none") {
+        anySheetVisible = true;
+      }
+    });
+    if (!anySheetVisible) {
+      sheetCollapse.style.display = "none";
+    }
+  }
+
+  var hasCompanions = _renderCompanions(container);
+  var companionsCollapse = container.querySelector(".ddb-companions-collapse");
+  if (companionsCollapse && !hasCompanions) {
+    companionsCollapse.style.display = "none";
+  }
+
   var sync = _fieldText(container, "dsf_ddb_last_sync");
   var syncRow = container.querySelector(".ddb-sync");
   if (syncRow && !sync) {
@@ -527,6 +709,24 @@ function sindrel_beyond_dataPostLoad(options) {
       status.style.display = "none";
     }
   }
+
+  var hasDescription = !!_fieldHtml(container, "dsf_description");
+  var hasBio = !!_fieldHtml(container, "dsf_bio");
+  var hasFeatures = !!_fieldHtml(container, "dsf_features_traits");
+  var featuresBlock = container.querySelector(".ddb-character-features-block");
+  if (featuresBlock && !hasFeatures) {
+    featuresBlock.style.display = "none";
+  }
+  var descBlock = container.querySelector(".ddb-character-desc-block");
+  if (descBlock && !hasDescription) {
+    descBlock.style.display = "none";
+  }
+  var bioBlock = container.querySelector(".ddb-character-bio-block");
+  if (bioBlock && !hasBio) {
+    bioBlock.style.display = "none";
+  }
+
+  _applyProseHeadingFolds(container);
 
   if (!container.getAttribute("data-sindrel-slots-bound")) {
     container.setAttribute("data-sindrel-slots-bound", "1");

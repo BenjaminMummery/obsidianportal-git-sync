@@ -55,13 +55,23 @@ sections:
   sync_meta:
     ddb_last_sync: "2026-07-08 16:00 UTC"
 
+  companions:
+    companions_json: |
+      []
+
+  features_traits:
+    features_traits: |
+      <strong>Darkvision.</strong> You can see in dim light within 60 feet of you as if it were bright light.<br>
+      <strong>Divine Sense.</strong> As an action, you can open your awareness to detect such forces.
+
+notes:
+  - features_traits is synced from D&D Beyond; legacy GM-only blocks migrate on sync/publish.
+  - companions_json is lore-authored (not D&D Beyond); preserved on re-sync.
+  - Limited use, inventory, race/background/alignment omitted from player sheet.
+  - Re-sync preserves player-edited hp_current from Git frontmatter.
+
 git_frontmatter:
   dndbeyond_id: "156087500"
   dndbeyond_url: "https://www.dndbeyond.com/characters/156087500"
   dndbeyond_synced_at: "2026-07-08T16:00:00Z"
   dynamic_sheet_template_id: "38274b74909343e1a3e95400091308c3"
-
-notes:
-  - Features & Traits stay in game_master_info (GM-only), not dynamic_sheet.
-  - Limited use, inventory, race/background/alignment/inspiration omitted from player sheet.
-  - Re-sync preserves player-edited hp_current from Git frontmatter.

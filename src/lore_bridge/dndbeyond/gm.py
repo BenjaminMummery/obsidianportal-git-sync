@@ -36,17 +36,36 @@ def _gm_features_narrative(gm_info: str) -> str:
     return cleaned.strip()
 
 
-def merge_ddb_gm_features(gm_info: str, features_html: str) -> str:
-    narrative = _gm_features_narrative(gm_info)
-
-    if not features_html.strip():
-        return narrative
-
-    block = (
-        f"{GM_FEATURES_START}\n"
-        f"<notextile>\n{features_html.strip()}\n</notextile>\n"
-        f"{GM_FEATURES_END}"
+def extract_gm_features_html(gm_info: str) -> str:
+    """Return Features & Traits HTML from a legacy managed GM block."""
+    gm_info = _normalize_gm_markers(gm_info)
+    start = _GM_FEATURES_START_RE.search(gm_info)
+    end = _GM_FEATURES_END_RE.search(gm_info)
+    if not start or not end or end.start() <= start.end():
+        return ""
+    block = gm_info[start.end() : end.start()].strip()
+    block = re.sub(r"^<notextile>\s*", "", block, flags=re.IGNORECASE)
+    block = re.sub(r"\s*</notextile>\s*$", "", block, flags=re.IGNORECASE)
+    match = re.search(
+        r'<div class="ddb-block">(.*?)</div>\s*</div>\s*</div>\s*$',
+        block,
+        re.DOTALL | re.IGNORECASE,
     )
-    if narrative:
-        return f"{block}\n\n{narrative}".strip()
-    return block
+    if match:
+        return match.group(1).strip()
+    cleaned = _DDB_SHEET_GM_RE.sub("", block).strip()
+    return cleaned
+
+
+def migrate_character_features(fm: dict, gm_info: str) -> tuple[dict, str]:
+    """Move legacy GM Features & Traits into dynamic_sheet when missing."""
+    extracted = extract_gm_features_html(gm_info)
+    if not extracted:
+        return fm, gm_info
+    ds = dict(fm.get("dynamic_sheet") or {})
+    if (ds.get("features_traits") or "").strip():
+        return fm, _gm_features_narrative(gm_info)
+    ds["features_traits"] = extracted
+    updated = dict(fm)
+    updated["dynamic_sheet"] = ds
+    return updated, _gm_features_narrative(gm_info)

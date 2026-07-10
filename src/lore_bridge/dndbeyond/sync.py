@@ -5,9 +5,9 @@ from datetime import datetime, timezone
 from typing import Any
 
 from lore_bridge.dndbeyond.fetch import DdbFetchError, fetch_character
-from lore_bridge.dndbeyond.gm import merge_ddb_gm_features
+from lore_bridge.dndbeyond.gm import migrate_character_features
 from lore_bridge.dndbeyond.mapper import map_character, map_dynamic_sheet
-from lore_bridge.dndbeyond.render import render_gm_features, render_sheet
+from lore_bridge.dndbeyond.render import render_sheet
 
 logger = logging.getLogger("lore_bridge")
 
@@ -88,10 +88,6 @@ def sync_from_dndbeyond_impl(
             synced_at = datetime.now(timezone.utc)
             sheet_data = map_character(data, synced_at=synced_at)
             ddb_sheet = render_sheet(sheet_data)
-            gm_info = merge_ddb_gm_features(
-                parsed.get("gm_info") or "",
-                render_gm_features(sheet_data),
-            )
             fm = dict(fm)
             ds = map_dynamic_sheet(data, synced_at=synced_at)
             existing_ds = fm.get("dynamic_sheet") or {}
@@ -107,6 +103,7 @@ def sync_from_dndbeyond_impl(
                 if existing_ds.get("companions_json") not in (None, "", "[]"):
                     ds["companions_json"] = str(existing_ds["companions_json"])
             fm["dynamic_sheet"] = ds
+            fm, gm_info = migrate_character_features(fm, parsed.get("gm_info") or "")
             if dynamic_sheet_template_id:
                 fm["dynamic_sheet_template_id"] = dynamic_sheet_template_id
             fm["dndbeyond_synced_at"] = synced_at.strftime("%Y-%m-%dT%H:%M:%SZ")
