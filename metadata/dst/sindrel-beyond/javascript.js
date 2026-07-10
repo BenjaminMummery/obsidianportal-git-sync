@@ -1,16 +1,50 @@
 // Display hooks for Obsidian Portal DST (slug: sindrel_beyond / sinbdrel_beyond).
 
-// Great House crests on The Lords of Sindrel campaign (school → house symbol).
+// Great House crests on The Lords of Sindrel campaign (school → media library asset).
 var SINDREL_SCHOOL_ICONS = {
-  abjuration: "/images/1546939/Meness.png",
-  conjuration: "/images/1546934/Beltus.png",
-  divination: "/images/1546931/Goela.png",
-  enchantment: "/images/1546937/Mabon.png",
-  evocation: "/images/1546933/Oestra.png",
-  illusion: "/images/1546935/Lithra.png",
-  necromancy: "/images/1555017/Samhain.png",
-  transmutation: "/images/1546932/Grimbolg.png",
+  abjuration: { assetId: "1546939", file: "Meness.png" },
+  conjuration: { assetId: "1546934", file: "Beltus.png" },
+  divination: { assetId: "1546931", file: "Goela.png" },
+  enchantment: { assetId: "1546937", file: "Mabon.png" },
+  evocation: { assetId: "1546933", file: "Oestra.png" },
+  illusion: { assetId: "1546935", file: "Lithra.png" },
+  necromancy: { assetId: "1555017", file: "Samhain.png" },
+  transmutation: { assetId: "1546932", file: "Grimbolg.png" },
 };
+
+var SINDREL_CAMPAIGN_ASSET_BASE =
+  "https://db4sgowjqfwig.cloudfront.net/campaigns/358417";
+
+var _sindrelCampaignAssetBase = SINDREL_CAMPAIGN_ASSET_BASE;
+
+function _campaignAssetBase() {
+  if (_sindrelCampaignAssetBase) {
+    return _sindrelCampaignAssetBase;
+  }
+  var sample = document.querySelector(
+    'img[src*="cloudfront.net/campaigns/"], [style*="cloudfront.net/campaigns/"]'
+  );
+  if (sample) {
+    var source = sample.getAttribute("src") || sample.getAttribute("style") || "";
+    var match = source.match(/https?:\/\/[^"'\\s]+cloudfront\.net\/campaigns\/\d+/);
+    if (match) {
+      _sindrelCampaignAssetBase = match[0];
+      return _sindrelCampaignAssetBase;
+    }
+  }
+  return null;
+}
+
+function _schoolIconUrl(icon) {
+  if (!icon) {
+    return "";
+  }
+  var base = _campaignAssetBase();
+  if (base) {
+    return base + "/assets/" + icon.assetId + "/" + icon.file;
+  }
+  return "/images/" + icon.assetId + "/" + icon.file;
+}
 
 function _sindrelBeyondContainer(options) {
   return options.containerId ? document.getElementById(options.containerId) : null;
@@ -22,6 +56,14 @@ function _fieldText(container, className) {
     return "";
   }
   return (el.textContent || "").trim();
+}
+
+function _fieldHtml(container, className) {
+  var el = container.querySelector("." + className);
+  if (!el) {
+    return "";
+  }
+  return ((el.innerHTML || el.textContent || "") + "").trim();
 }
 
 function _hideIfEmpty(container, fieldClass, bucketSelector) {
@@ -78,14 +120,21 @@ function _spellSlotsUsedMap(container) {
 
 function _writeSpellSlotsUsedMap(container, usedMap) {
   var field = container.querySelector(".dsf_spell_slots_used_json");
-  if (field) {
-    field.textContent = JSON.stringify(usedMap);
+  if (!field) {
+    return;
+  }
+  field.textContent = JSON.stringify(usedMap);
+  if (typeof Event === "function") {
+    field.dispatchEvent(new Event("change", { bubbles: true }));
   }
 }
 
 function _sheetEditable(container) {
   var root = container.closest(".ds_sindrel_beyond, .ds_sinbdrel_beyond");
-  return !!(root && root.classList.contains("editable"));
+  if (root && root.classList.contains("editable")) {
+    return true;
+  }
+  return !!container.querySelector(".dsf.dsfu");
 }
 
 function _slotUsedCount(slot, usedMap) {
@@ -208,7 +257,8 @@ function _schoolTag(spell) {
   tag.className = "ddb-tag ddb-tag-school";
   tag.title = school ? school.charAt(0).toUpperCase() + school.slice(1) : "School";
 
-  var iconSrc = SINDREL_SCHOOL_ICONS[school];
+  var icon = SINDREL_SCHOOL_ICONS[school];
+  var iconSrc = _schoolIconUrl(icon);
   if (iconSrc) {
     var img = document.createElement("img");
     img.className = "ddb-school-icon";
@@ -483,6 +533,32 @@ function sindrel_beyond_dataPostLoad(options) {
     var hasDeathSaves = !!_fieldText(container, "dsf_death_saves");
     if (!hasConditions && !hasDeathSaves) {
       status.style.display = "none";
+    }
+  }
+
+  var hasDescription = !!_fieldHtml(container, "dsf_description");
+  var hasBio = !!_fieldHtml(container, "dsf_bio");
+  var descBlock = container.querySelector(".ddb-character-description-block");
+  var bioBlock = container.querySelector(".ddb-character-bio-block");
+  if (descBlock && !hasDescription) {
+    descBlock.style.display = "none";
+  }
+  if (bioBlock && !hasBio) {
+    bioBlock.style.display = "none";
+  }
+  var characterText = container.querySelector(".ddb-character-text");
+  if (characterText && !hasDescription && !hasBio) {
+    characterText.style.display = "none";
+  }
+
+  if (!container.getAttribute("data-sindrel-slots-bound")) {
+    container.setAttribute("data-sindrel-slots-bound", "1");
+    var root = container.closest(".ds_sindrel_beyond, .ds_sinbdrel_beyond");
+    if (root && typeof MutationObserver === "function") {
+      var observer = new MutationObserver(function () {
+        _renderSpellSlots(container);
+      });
+      observer.observe(root, { attributes: true, attributeFilter: ["class"] });
     }
   }
 }

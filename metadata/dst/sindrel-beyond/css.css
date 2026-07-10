@@ -8,8 +8,10 @@
   font-size: 14px;
   line-height: 1.45;
   color: #211b18;
-  max-width: 920px;
-  margin: 0 auto;
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+  box-sizing: border-box;
 }
 
 .ds_sindrel_beyond .ddb-sheet .ddb-header,
@@ -700,6 +702,83 @@
   color: #334155;
 }
 
+/* Description & biography — plain page prose, not boxed sheet sections */
+.ds_sindrel_beyond .ddb-sheet .ddb-section.ddb-character-text,
+.ds_sinbdrel_beyond .ddb-sheet .ddb-section.ddb-character-text {
+  margin-top: 0.75rem;
+  margin-bottom: 0;
+  padding: 0;
+  background: none;
+  border: 0;
+  box-shadow: none;
+}
+
+.ds_sindrel_beyond .ddb-sheet .ddb-character-block,
+.ds_sinbdrel_beyond .ddb-sheet .ddb-character-block {
+  margin-bottom: 1rem;
+}
+
+.ds_sindrel_beyond .ddb-sheet .ddb-character-block:last-child,
+.ds_sinbdrel_beyond .ddb-sheet .ddb-character-block:last-child {
+  margin-bottom: 0;
+}
+
+.ds_sindrel_beyond .ddb-sheet .ddb-character-heading,
+.ds_sinbdrel_beyond .ddb-sheet .ddb-character-heading {
+  margin: 0 0 0.35rem;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #211b18;
+  border: 0;
+  background: none;
+  padding: 0;
+}
+
+.ds_sindrel_beyond .ddb-sheet .ddb-character-description .dsf_description,
+.ds_sinbdrel_beyond .ddb-sheet .ddb-character-description .dsf_description,
+.ds_sindrel_beyond .ddb-sheet .ddb-character-bio .dsf_bio,
+.ds_sinbdrel_beyond .ddb-sheet .ddb-character-bio .dsf_bio {
+  display: block;
+  width: 100%;
+  white-space: normal;
+  font-size: inherit;
+  line-height: 1.55;
+  color: inherit;
+  min-height: 0;
+}
+
+.ds_sindrel_beyond .ddb-sheet .ddb-character-text,
+.ds_sinbdrel_beyond .ddb-sheet .ddb-character-text {
+  margin-top: 1.25rem;
+  padding: 0;
+}
+
+.ds_sindrel_beyond .ddb-sheet .ddb-character-heading,
+.ds_sinbdrel_beyond .ddb-sheet .ddb-character-heading {
+  margin: 0 0 0.35rem;
+  font-size: 1.1rem;
+  font-weight: 700;
+  line-height: 1.3;
+  color: #211b18;
+}
+
+.ds_sindrel_beyond .ddb-sheet .ddb-character-description-block,
+.ds_sinbdrel_beyond .ddb-sheet .ddb-character-description-block {
+  margin-bottom: 1rem;
+}
+
+.ds_sindrel_beyond .ddb-sheet .ddb-character-description .dsf_description,
+.ds_sinbdrel_beyond .ddb-sheet .ddb-character-description .dsf_description,
+.ds_sindrel_beyond .ddb-sheet .ddb-character-bio .dsf_bio,
+.ds_sinbdrel_beyond .ddb-sheet .ddb-character-bio .dsf_bio {
+  display: block;
+  width: 100%;
+  white-space: normal;
+  font-size: inherit;
+  line-height: 1.55;
+  color: #211b18;
+}
+
 .ds_sindrel_beyond .ddb-sheet .ddb-footer,
 .ds_sinbdrel_beyond .ddb-sheet .ddb-footer {
   margin-top: 0.5rem;
@@ -718,11 +797,6 @@
   font-style: italic;
 }
 
-/* Optional: hide OP's "Description" header above the injected sheet */
-.ds_sindrel_beyond .character-content h2:first-child,
-.ds_sinbdrel_beyond .character-content h2:first-child {
-  display: none;
-}
 /* DST field chrome (edit mode + multiline values) */
 .ds_sindrel_beyond .ddb-sheet .dsf,
 .ds_sinbdrel_beyond .ddb-sheet .dsf {
@@ -762,8 +836,8 @@
   border-radius: 8px;
 }
 
-.ds_sindrel_beyond.editable .dsf:not(.readonly),
-.ds_sinbdrel_beyond.editable .dsf:not(.readonly) {
+.ds_sindrel_beyond.editable .dsf.dsfu:not(.readonly),
+.ds_sinbdrel_beyond.editable .dsf.dsfu:not(.readonly) {
   background: #ece8df;
   cursor: pointer;
   border-radius: 2px;
