@@ -63,7 +63,7 @@ GITHUB_RETRY_STATUS_CODES = {429, 500, 502, 503, 504}
 
 app = FastAPI(
     title="Sindrel Lore Bridge",
-    version="0.8.7",
+    version="0.8.8",
     description="Bidirectional Obsidian Portal ↔ GitHub lore sync bridge with pull-through conflict protection.",
 )
 
@@ -532,13 +532,28 @@ def fetch_character(id_or_slug: str, force: bool = False) -> dict[str, Any]:
     return normalized
 
 
-def _op_dynamic_sheet(frontmatter: dict[str, Any], description: str) -> dict[str, Any]:
+def _op_dynamic_sheet_base(frontmatter: dict[str, Any]) -> dict[str, Any]:
     ds = dict(frontmatter.get("dynamic_sheet") or {})
-    if frontmatter.get("dynamic_sheet_template_id"):
-        ds["description"] = description
-    else:
-        ds.pop("description", None)
+    ds.pop("description", None)
     return ds
+
+
+def _mirror_dst_description_html(raw: dict[str, Any], ds: dict[str, Any]) -> dict[str, Any]:
+    character_id = raw.get("id")
+    if not character_id:
+        return raw
+    ds_mirror = dict(raw.get("dynamic_sheet") or ds)
+    ds_mirror["description"] = raw.get("description_html") or ""
+    return op_put(
+        f"/campaigns/{CAMPAIGN_ID}/characters/{character_id}.json",
+        {"character": {"dynamic_sheet": ds_mirror}},
+    )
+
+
+def _finalize_op_character(raw: dict[str, Any], frontmatter: dict[str, Any], ds: dict[str, Any]) -> dict[str, Any]:
+    if frontmatter.get("dynamic_sheet_template_id"):
+        raw = _mirror_dst_description_html(raw, ds)
+    return normalize_character(raw)
 
 
 def update_op_character(
@@ -559,13 +574,13 @@ def update_op_character(
     }
     if frontmatter.get("tagline"):
         character["tagline"] = frontmatter["tagline"]
+    ds = _op_dynamic_sheet_base(frontmatter)
     if frontmatter.get("dynamic_sheet") is not None or frontmatter.get("dynamic_sheet_template_id"):
-        character["dynamic_sheet"] = _op_dynamic_sheet(frontmatter, description)
+        character["dynamic_sheet"] = ds
     if frontmatter.get("dynamic_sheet_template_id"):
         character["dynamic_sheet_template_id"] = frontmatter["dynamic_sheet_template_id"]
-    return normalize_character(
-        op_put(f"/campaigns/{CAMPAIGN_ID}/characters/{character_id}.json", {"character": character})
-    )
+    raw = op_put(f"/campaigns/{CAMPAIGN_ID}/characters/{character_id}.json", {"character": character})
+    return _finalize_op_character(raw, frontmatter, ds)
 
 
 def create_op_character(
@@ -588,14 +603,14 @@ def create_op_character(
     }
     if frontmatter.get("tagline"):
         character["tagline"] = frontmatter["tagline"]
+    ds = _op_dynamic_sheet_base(frontmatter)
     if frontmatter.get("dynamic_sheet") or frontmatter.get("dynamic_sheet_template_id"):
-        character["dynamic_sheet"] = _op_dynamic_sheet(frontmatter, description)
+        character["dynamic_sheet"] = ds
     if frontmatter.get("dynamic_sheet_template_id"):
         character["dynamic_sheet_template_id"] = frontmatter["dynamic_sheet_template_id"]
     try:
-        return normalize_character(
-            op_post(f"/campaigns/{CAMPAIGN_ID}/characters.json", {"character": character})
-        )
+        raw = op_post(f"/campaigns/{CAMPAIGN_ID}/characters.json", {"character": character})
+        return _finalize_op_character(raw, frontmatter, ds)
     except HTTPException as exc:
         existing_id = resolve_existing_portal_id(frontmatter, path, "Character")
         if is_name_taken_error(exc) and existing_id:
