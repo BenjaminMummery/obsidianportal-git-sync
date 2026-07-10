@@ -104,11 +104,6 @@ def sync_from_dndbeyond_impl(
                     ds["spell_slots_used_json"] = str(existing_ds["spell_slots_used_json"])
                 if existing_ds.get("inspiration") not in (None, ""):
                     ds["inspiration"] = str(existing_ds["inspiration"])
-                desc = (parsed.get("description") or "").strip()
-                if desc:
-                    ds["description"] = desc
-                elif existing_ds.get("description") not in (None, ""):
-                    ds["description"] = str(existing_ds["description"])
             fm["dynamic_sheet"] = ds
             if dynamic_sheet_template_id:
                 fm["dynamic_sheet_template_id"] = dynamic_sheet_template_id

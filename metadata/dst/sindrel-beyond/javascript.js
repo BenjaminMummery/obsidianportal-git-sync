@@ -58,14 +58,6 @@ function _fieldText(container, className) {
   return (el.textContent || "").trim();
 }
 
-function _fieldHtml(container, className) {
-  var el = container.querySelector("." + className);
-  if (!el) {
-    return "";
-  }
-  return ((el.innerHTML || el.textContent || "") + "").trim();
-}
-
 function _hideIfEmpty(container, fieldClass, bucketSelector) {
   var text = _fieldText(container, fieldClass);
   var bucket = container.querySelector(bucketSelector);
@@ -534,21 +526,6 @@ function sindrel_beyond_dataPostLoad(options) {
     if (!hasConditions && !hasDeathSaves) {
       status.style.display = "none";
     }
-  }
-
-  var hasDescription = !!_fieldHtml(container, "dsf_description");
-  var hasBio = !!_fieldHtml(container, "dsf_bio");
-  var descBlock = container.querySelector(".ddb-character-description-block");
-  var bioBlock = container.querySelector(".ddb-character-bio-block");
-  if (descBlock && !hasDescription) {
-    descBlock.style.display = "none";
-  }
-  if (bioBlock && !hasBio) {
-    bioBlock.style.display = "none";
-  }
-  var characterText = container.querySelector(".ddb-character-text");
-  if (characterText && !hasDescription && !hasBio) {
-    characterText.style.display = "none";
   }
 
   if (!container.getAttribute("data-sindrel-slots-bound")) {

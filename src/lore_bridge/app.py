@@ -60,7 +60,7 @@ DYNAMIC_SHEET_TEMPLATE_ID = os.environ.get("DYNAMIC_SHEET_TEMPLATE_ID", "").stri
 
 app = FastAPI(
     title="Sindrel Lore Bridge",
-    version="0.8.4",
+    version="0.8.5",
     description="Bidirectional Obsidian Portal ↔ GitHub lore sync bridge with pull-through conflict protection.",
 )
 
@@ -529,17 +529,6 @@ def fetch_character(id_or_slug: str, force: bool = False) -> dict[str, Any]:
     return normalized
 
 
-def _op_dynamic_sheet(frontmatter: dict[str, Any], description: str) -> dict[str, Any]:
-    ds = dict(frontmatter.get("dynamic_sheet") or {})
-    if frontmatter.get("dynamic_sheet_template_id"):
-        desc = description.strip()
-        if desc:
-            ds["description"] = desc
-        else:
-            ds.pop("description", None)
-    return ds
-
-
 def update_op_character(
     character_id: str,
     frontmatter: dict[str, Any],
@@ -558,8 +547,10 @@ def update_op_character(
     }
     if frontmatter.get("tagline"):
         character["tagline"] = frontmatter["tagline"]
-    if frontmatter.get("dynamic_sheet") is not None or frontmatter.get("dynamic_sheet_template_id"):
-        character["dynamic_sheet"] = _op_dynamic_sheet(frontmatter, description)
+    if frontmatter.get("dynamic_sheet") is not None:
+        ds = dict(frontmatter.get("dynamic_sheet") or {})
+        ds.pop("description", None)
+        character["dynamic_sheet"] = ds
     if frontmatter.get("dynamic_sheet_template_id"):
         character["dynamic_sheet_template_id"] = frontmatter["dynamic_sheet_template_id"]
     return normalize_character(
@@ -587,8 +578,10 @@ def create_op_character(
     }
     if frontmatter.get("tagline"):
         character["tagline"] = frontmatter["tagline"]
-    if frontmatter.get("dynamic_sheet") or frontmatter.get("dynamic_sheet_template_id"):
-        character["dynamic_sheet"] = _op_dynamic_sheet(frontmatter, description)
+    if frontmatter.get("dynamic_sheet"):
+        ds = dict(frontmatter["dynamic_sheet"])
+        ds.pop("description", None)
+        character["dynamic_sheet"] = ds
     if frontmatter.get("dynamic_sheet_template_id"):
         character["dynamic_sheet_template_id"] = frontmatter["dynamic_sheet_template_id"]
     try:
@@ -940,11 +933,7 @@ def character_to_markdown(
     if character.get("avatar_url"):
         fm["avatar_url"] = character["avatar_url"]
     if tagline_description is None:
-        ds = character.get("dynamic_sheet") or {}
-        if isinstance(ds, dict) and ds.get("description"):
-            tagline_description = str(ds["description"])
-        else:
-            tagline_description = character.get("description") or ""
+        tagline_description = character.get("description") or ""
     description = tagline_description.rstrip()
     bio = (character.get("bio") or "").rstrip()
     gm = (character.get("game_master_info") or "").rstrip()
