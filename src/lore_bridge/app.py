@@ -63,7 +63,7 @@ GITHUB_RETRY_STATUS_CODES = {429, 500, 502, 503, 504}
 
 app = FastAPI(
     title="Sindrel Lore Bridge",
-    version="0.8.6",
+    version="0.8.7",
     description="Bidirectional Obsidian Portal ↔ GitHub lore sync bridge with pull-through conflict protection.",
 )
 
@@ -532,6 +532,15 @@ def fetch_character(id_or_slug: str, force: bool = False) -> dict[str, Any]:
     return normalized
 
 
+def _op_dynamic_sheet(frontmatter: dict[str, Any], description: str) -> dict[str, Any]:
+    ds = dict(frontmatter.get("dynamic_sheet") or {})
+    if frontmatter.get("dynamic_sheet_template_id"):
+        ds["description"] = description
+    else:
+        ds.pop("description", None)
+    return ds
+
+
 def update_op_character(
     character_id: str,
     frontmatter: dict[str, Any],
@@ -550,10 +559,8 @@ def update_op_character(
     }
     if frontmatter.get("tagline"):
         character["tagline"] = frontmatter["tagline"]
-    if frontmatter.get("dynamic_sheet") is not None:
-        ds = dict(frontmatter.get("dynamic_sheet") or {})
-        ds.pop("description", None)
-        character["dynamic_sheet"] = ds
+    if frontmatter.get("dynamic_sheet") is not None or frontmatter.get("dynamic_sheet_template_id"):
+        character["dynamic_sheet"] = _op_dynamic_sheet(frontmatter, description)
     if frontmatter.get("dynamic_sheet_template_id"):
         character["dynamic_sheet_template_id"] = frontmatter["dynamic_sheet_template_id"]
     return normalize_character(
@@ -581,10 +588,8 @@ def create_op_character(
     }
     if frontmatter.get("tagline"):
         character["tagline"] = frontmatter["tagline"]
-    if frontmatter.get("dynamic_sheet"):
-        ds = dict(frontmatter["dynamic_sheet"])
-        ds.pop("description", None)
-        character["dynamic_sheet"] = ds
+    if frontmatter.get("dynamic_sheet") or frontmatter.get("dynamic_sheet_template_id"):
+        character["dynamic_sheet"] = _op_dynamic_sheet(frontmatter, description)
     if frontmatter.get("dynamic_sheet_template_id"):
         character["dynamic_sheet_template_id"] = frontmatter["dynamic_sheet_template_id"]
     try:
