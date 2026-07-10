@@ -63,7 +63,7 @@ GITHUB_RETRY_STATUS_CODES = {429, 500, 502, 503, 504}
 
 app = FastAPI(
     title="Sindrel Lore Bridge",
-    version="0.8.8",
+    version="0.8.9",
     description="Bidirectional Obsidian Portal ↔ GitHub lore sync bridge with pull-through conflict protection.",
 )
 
@@ -532,10 +532,14 @@ def fetch_character(id_or_slug: str, force: bool = False) -> dict[str, Any]:
     return normalized
 
 
-def _op_dynamic_sheet_base(frontmatter: dict[str, Any]) -> dict[str, Any]:
-    ds = dict(frontmatter.get("dynamic_sheet") or {})
+def _strip_dynamic_sheet_description(dynamic_sheet: dict[str, Any] | None) -> dict[str, Any]:
+    ds = dict(dynamic_sheet or {})
     ds.pop("description", None)
     return ds
+
+
+def _op_dynamic_sheet_base(frontmatter: dict[str, Any]) -> dict[str, Any]:
+    return _strip_dynamic_sheet_description(frontmatter.get("dynamic_sheet"))
 
 
 def _mirror_dst_description_html(raw: dict[str, Any], ds: dict[str, Any]) -> dict[str, Any]:
@@ -986,7 +990,7 @@ def character_to_markdown(
     if character.get("tagline"):
         fm["tagline"] = character["tagline"]
     if character.get("dynamic_sheet"):
-        fm["dynamic_sheet"] = character["dynamic_sheet"]
+        fm["dynamic_sheet"] = _strip_dynamic_sheet_description(character["dynamic_sheet"])
     if character.get("dynamic_sheet_template_id"):
         fm["dynamic_sheet_template_id"] = character["dynamic_sheet_template_id"]
     if character.get("avatar_url"):
