@@ -653,9 +653,13 @@ Campaign **items** (inventory objects) have no public Obsidian Portal API. They 
 
 During migration, publish reads both extensions. After a full portal pull, bridge writes only `.textile` and deletes legacy `.md` copies for tracked records.
 
-### GitHub API rate limits or very slow sync
+### GitHub API rate limits, 502 Unicorn errors, or very slow sync
 
 Large first syncs still require many Obsidian Portal and GitHub blob API calls, but the lore repo receives **one commit per sync operation** instead of one commit per file.
+
+The bridge retries transient GitHub failures (502/503/504/429) with exponential backoff. Publish also skips unchanged files using blob SHAs from `sync-state.json`, so most runs only fetch files that actually changed.
+
+If publish still fails mid-run, wait a minute and rerun `lore-bridge to-op` — GitHub's occasional 502 HTML pages are usually short-lived.
 
 ### Render deploy/build failures
 

@@ -104,6 +104,8 @@ def sync_from_dndbeyond_impl(
                     ds["spell_slots_used_json"] = str(existing_ds["spell_slots_used_json"])
                 if existing_ds.get("inspiration") not in (None, ""):
                     ds["inspiration"] = str(existing_ds["inspiration"])
+                if existing_ds.get("companions_json") not in (None, "", "[]"):
+                    ds["companions_json"] = str(existing_ds["companions_json"])
             fm["dynamic_sheet"] = ds
             if dynamic_sheet_template_id:
                 fm["dynamic_sheet_template_id"] = dynamic_sheet_template_id

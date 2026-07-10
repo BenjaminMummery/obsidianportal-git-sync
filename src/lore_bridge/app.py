@@ -57,10 +57,13 @@ OP_AUTHOR_ID = os.environ.get("OP_AUTHOR_ID", "")
 ALLOW_CREATE_FROM_GIT = os.environ.get("ALLOW_CREATE_FROM_GIT", "true").lower() == "true"
 ALLOW_DELETE_FROM_GIT = os.environ.get("ALLOW_DELETE_FROM_GIT", "true").lower() == "true"
 DYNAMIC_SHEET_TEMPLATE_ID = os.environ.get("DYNAMIC_SHEET_TEMPLATE_ID", "").strip() or None
+GITHUB_API_RETRIES = max(1, int(os.environ.get("GITHUB_API_RETRIES", "5")))
+GITHUB_API_RETRY_BASE_SECONDS = float(os.environ.get("GITHUB_API_RETRY_BASE_SECONDS", "1.0"))
+GITHUB_RETRY_STATUS_CODES = {429, 500, 502, 503, 504}
 
 app = FastAPI(
     title="Sindrel Lore Bridge",
-    version="0.8.5",
+    version="0.8.6",
     description="Bidirectional Obsidian Portal ↔ GitHub lore sync bridge with pull-through conflict protection.",
 )
 
@@ -608,15 +611,51 @@ def gh_headers() -> dict[str, str]:
 
 def gh_api(method: str, path: str, payload: dict[str, Any] | None = None, params: dict[str, Any] | None = None, ok: tuple[int, ...] = (200, 201)) -> Any:
     url = f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO}{path}"
-    response = requests.request(method, url, headers=gh_headers(), json=payload, params=params, timeout=30)
-    if response.status_code not in ok:
-        raise HTTPException(status_code=502, detail=f"GitHub {method} {path} failed: {response.status_code} {response.text[:1500]}")
-    if response.status_code == 204 or not response.text:
-        return None
-    return response.json()
+    last_status = 0
+    last_body = ""
+    for attempt in range(GITHUB_API_RETRIES):
+        response = requests.request(method, url, headers=gh_headers(), json=payload, params=params, timeout=30)
+        if response.status_code in ok:
+            if response.status_code == 204 or not response.text:
+                return None
+            return response.json()
+        last_status = response.status_code
+        last_body = response.text[:1500]
+        if response.status_code not in GITHUB_RETRY_STATUS_CODES or attempt + 1 >= GITHUB_API_RETRIES:
+            break
+        retry_after = response.headers.get("Retry-After")
+        if retry_after and retry_after.isdigit():
+            delay = float(retry_after)
+        else:
+            delay = GITHUB_API_RETRY_BASE_SECONDS * (2**attempt)
+        logger.warning(
+            "GitHub %s %s returned %s; retry %d/%d in %.1fs",
+            method,
+            path,
+            response.status_code,
+            attempt + 1,
+            GITHUB_API_RETRIES,
+            delay,
+        )
+        time.sleep(delay)
+    raise HTTPException(
+        status_code=502,
+        detail=f"GitHub {method} {path} failed: {last_status} {last_body}",
+    )
 
 
-def gh_get_file(path: str) -> RepoFile | None:
+def gh_get_blob_content(sha: str) -> str:
+    data = gh_api("GET", f"/git/blobs/{sha}")
+    return base64.b64decode(data["content"]).decode("utf-8")
+
+
+def gh_get_file(path: str, *, blob_sha: str | None = None) -> RepoFile | None:
+    if blob_sha:
+        try:
+            return RepoFile(path=path, content=gh_get_blob_content(blob_sha), sha=blob_sha)
+        except HTTPException as exc:
+            if "404" not in str(exc.detail):
+                raise
     try:
         data = gh_api("GET", f"/contents/{path}", params={"ref": GITHUB_BRANCH})
     except HTTPException as exc:
@@ -1301,6 +1340,11 @@ def publish_git_to_portal_impl(force_portal_pull: bool = True, progress: Progres
     repo_path_set = set(repo_paths)
     git_changes: list[TreeChange] = []
     publish_total = len(repo_paths)
+    path_to_state = {
+        entry.get("repo_path"): (page_id, entry)
+        for page_id, entry in pages_state.items()
+        if entry.get("repo_path")
+    }
 
     for i, path in enumerate(repo_paths, start=1):
         progress.phase("publishing_portal", current=i, total=publish_total, path=path)
@@ -1308,8 +1352,12 @@ def publish_git_to_portal_impl(force_portal_pull: bool = True, progress: Progres
         title = path
         try:
             blob_sha = repo_blobs.get(path)
+            known_by_path = path_to_state.get(path)
+            if known_by_path and blob_sha and blob_sha == known_by_path[1].get("repo_blob_sha"):
+                skipped += 1
+                continue
 
-            file = gh_get_file(path)
+            file = gh_get_file(path, blob_sha=blob_sha)
             if not file:
                 continue
             parsed = parse_sync_file(file.content)
