@@ -57,6 +57,14 @@ def extract_gm_features_html(gm_info: str) -> str:
     return cleaned
 
 
+def needs_feature_migration(fm: dict, gm_info: str) -> bool:
+    """True when legacy GM Features & Traits should move into dynamic_sheet."""
+    if not extract_gm_features_html(gm_info):
+        return False
+    ds = fm.get("dynamic_sheet") or {}
+    return not str(ds.get("features_traits") or "").strip()
+
+
 def migrate_character_features(fm: dict, gm_info: str) -> tuple[dict, str]:
     """Move legacy GM Features & Traits into dynamic_sheet when missing."""
     extracted = extract_gm_features_html(gm_info)

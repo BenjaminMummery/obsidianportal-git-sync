@@ -22,7 +22,7 @@ from pydantic import BaseModel
 from rapidfuzz import fuzz
 from requests_oauthlib import OAuth1
 
-from lore_bridge.dndbeyond.gm import migrate_character_features
+from lore_bridge.dndbeyond.gm import migrate_character_features, needs_feature_migration
 from lore_bridge.dndbeyond.sync import DdbSyncResult, sync_from_dndbeyond_impl
 
 load_dotenv()
@@ -64,7 +64,7 @@ GITHUB_RETRY_STATUS_CODES = {429, 500, 502, 503, 504}
 
 app = FastAPI(
     title="Sindrel Lore Bridge",
-    version="0.9.0",
+    version="0.9.1",
     description="Bidirectional Obsidian Portal ↔ GitHub lore sync bridge with pull-through conflict protection.",
 )
 
@@ -1378,11 +1378,6 @@ def publish_git_to_portal_impl(force_portal_pull: bool = True, progress: Progres
         title = path
         try:
             blob_sha = repo_blobs.get(path)
-            known_by_path = path_to_state.get(path)
-            if known_by_path and blob_sha and blob_sha == known_by_path[1].get("repo_blob_sha"):
-                skipped += 1
-                continue
-
             file = gh_get_file(path, blob_sha=blob_sha)
             if not file:
                 continue
@@ -1431,7 +1426,12 @@ def publish_git_to_portal_impl(force_portal_pull: bool = True, progress: Progres
 
             if page_id:
                 known = pages_state.get(page_id, {})
-                if current_hash == known.get("repo_hash_at_sync"):
+                if (
+                    current_hash == known.get("repo_hash_at_sync")
+                    and blob_sha
+                    and blob_sha == known.get("repo_blob_sha")
+                    and not needs_feature_migration(parsed["fm"], parsed.get("gm_info") or "")
+                ):
                     skipped += 1
                     if blob_sha:
                         known["repo_blob_sha"] = blob_sha

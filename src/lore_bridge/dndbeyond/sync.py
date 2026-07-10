@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from lore_bridge.dndbeyond.fetch import DdbFetchError, fetch_character
-from lore_bridge.dndbeyond.gm import migrate_character_features
+from lore_bridge.dndbeyond.gm import migrate_character_features, needs_feature_migration
 from lore_bridge.dndbeyond.mapper import map_character, map_dynamic_sheet
 from lore_bridge.dndbeyond.render import render_sheet
 
@@ -81,7 +81,24 @@ def sync_from_dndbeyond_impl(
         fm = parsed["fm"]
         ddb_id = fm.get("dndbeyond_id")
         if not ddb_id:
-            skipped += 1
+            if not needs_feature_migration(fm, parsed.get("gm_info") or ""):
+                skipped += 1
+                continue
+            fm, gm_info = migrate_character_features(dict(fm), parsed.get("gm_info") or "")
+            new_content = rebuild_character_content(
+                fm,
+                ddb_sheet=parsed.get("ddb_sheet") or "",
+                description=parsed.get("description") or "",
+                bio=parsed.get("bio") or "",
+                gm_info=gm_info,
+            )
+            if new_content == file.content:
+                skipped += 1
+                continue
+            changes.append(TreeChange(path, new_content))
+            updated += 1
+            if progress:
+                progress.phase("writing_github", current=i, total=total, path=path)
             continue
         try:
             data = fetch_character(str(ddb_id))
