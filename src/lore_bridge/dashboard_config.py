@@ -46,6 +46,7 @@ class DashboardConfig:
     campaign_status_slug: str
     party_wealth_title: str
     pc_groups: list[dict]
+    pc_colors: dict[str, dict]
     npc_exclude_slugs: set[str]
     npc_creature_slugs: set[str]
     pronoun_tags: set[str]
@@ -65,6 +66,16 @@ class DashboardConfig:
 
     def campaign_status_path(self, wiki_dir: str, file_ext: str) -> str:
         return self.wiki_path(wiki_dir, self.campaign_status_slug, file_ext)
+
+
+def _parse_pc_colors(raw: dict | None) -> dict[str, dict]:
+    out: dict[str, dict] = {}
+    for slug, val in (raw or {}).items():
+        if isinstance(val, str):
+            out[slug] = {"color": val}
+        elif isinstance(val, dict):
+            out[slug] = val
+    return out
 
 
 def load_dashboard_config(data: dict | None) -> DashboardConfig:
@@ -87,12 +98,15 @@ def load_dashboard_config(data: dict | None) -> DashboardConfig:
         if tile.get("wiki_slug"):
             wiki_slugs.add(tile["wiki_slug"])
 
+    pc_mentions = merged.get("pc_mentions") or {}
+
     return DashboardConfig(
         raw=merged,
         title=merged.get("title") or DEFAULT_CONFIG["title"],
         campaign_status_slug=slug,
         party_wealth_title=merged.get("party_wealth_title") or "Party wealth",
-        pc_groups=list((merged.get("pc_mentions") or {}).get("groups") or []),
+        pc_groups=list(pc_mentions.get("groups") or []),
+        pc_colors=_parse_pc_colors(pc_mentions.get("colors")),
         npc_exclude_slugs=set(demo.get("exclude_slugs") or []),
         npc_creature_slugs=set(demo.get("creature_slugs") or []),
         pronoun_tags=pronoun_tags,
@@ -111,6 +125,19 @@ def load_dashboard_config(data: dict | None) -> DashboardConfig:
 
 def parse_config_json(text: str) -> dict:
     return json.loads(text)
+
+
+def _pc_color_for_slugs(
+    config: DashboardConfig,
+    slugs: list[str],
+    *,
+    fallback: str,
+) -> tuple[str, str | None]:
+    for slug in slugs:
+        style = config.pc_colors.get(slug) or {}
+        if style.get("color"):
+            return style["color"], style.get("borderColor")
+    return fallback, None
 
 
 def build_pc_mention_groups(characters: list[dict], config: DashboardConfig) -> list[dict]:
@@ -136,27 +163,43 @@ def build_pc_mention_groups(characters: list[dict], config: DashboardConfig) -> 
                 if pc:
                     label = _pc_short_name(pc["name"])
                     patterns.append(rf"\b{re.escape(label)}(?:'s|'s)?\b")
-        groups.append({
+        color = g.get("color")
+        border = g.get("borderColor")
+        if not color:
+            color, border_from_slug = _pc_color_for_slugs(
+                config, link_slugs, fallback=next_color()
+            )
+            if border is None:
+                border = border_from_slug
+        row = {
             "id": g.get("id") or _slugify(g.get("name") or link_slugs[0]),
             "name": g.get("name") or (slug_to_pc[link_slugs[0]]["name"] if link_slugs else "PC"),
-            "color": g.get("color") or next_color(),
+            "color": color,
             "link_slugs": link_slugs,
             "text_patterns": patterns,
-            **({"borderColor": g["borderColor"]} if g.get("borderColor") else {}),
-        })
+        }
+        if border:
+            row["borderColor"] = border
+        groups.append(row)
         used_slugs.update(link_slugs)
 
     for pc in pcs:
         if pc["slug"] in used_slugs:
             continue
         label = _pc_short_name(pc["name"])
-        groups.append({
+        color, border = _pc_color_for_slugs(
+            config, [pc["slug"]], fallback=next_color()
+        )
+        row = {
             "id": pc["slug"],
             "name": label,
-            "color": next_color(),
+            "color": color,
             "link_slugs": [pc["slug"]],
             "text_patterns": [rf"\b{re.escape(label)}(?:'s|'s)?\b"],
-        })
+        }
+        if border:
+            row["borderColor"] = border
+        groups.append(row)
     return groups
 
 

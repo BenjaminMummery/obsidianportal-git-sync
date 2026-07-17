@@ -78,7 +78,7 @@ DEFAULT_CONFIG: dict = {
     "title": "Campaign Lore Dashboard",
     "campaign_status": {"wiki_slug": "home-page"},
     "party_wealth_title": "Party wealth",
-    "pc_mentions": {"groups": []},
+    "pc_mentions": {"groups": [], "colors": {}},
     "npc_demographics": {
         "exclude_slugs": [],
         "creature_slugs": [],

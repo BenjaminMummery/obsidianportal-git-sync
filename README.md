@@ -158,7 +158,11 @@ Opinion values must match the nine-step scale in bridge defaults (`Hostile` … 
         "color": "#383838",
         "borderColor": "#c8c4bc"
       }
-    ]
+    ],
+    "colors": {
+      "alice": "#9d6bcd",
+      "bob": { "color": "#4682d6", "borderColor": "#c8c4bc" }
+    }
   },
   "npc_demographics": {
     "exclude_slugs": [],
@@ -203,7 +207,7 @@ Opinion values must match the nine-step scale in bridge defaults (`Hostile` … 
 
 `after` controls left-column placement: `date` (default), `wealth`, or `end`.
 
-PCs not listed in `pc_mentions.groups` are auto-added (one group per PC, short name from character page).
+PCs not listed in `pc_mentions.groups` are auto-added (one group per PC, short name from character page). Set chart colours per character slug in `pc_mentions.colors` (string or `{ "color", "borderColor" }`); group-level `color` overrides when both are set.
 
 Faction mention groups are built from the faction clocks table. Keys in `faction_mentions` match faction names from that table and add link patterns, colours, and aliases. Great Houses automatically match their short name too (`House Beltus` also counts `Beltus`).
 
