@@ -15,7 +15,12 @@ jobs:
         with:
           fetch-depth: 0
           token: ${{ secrets.ADMIN_PAT }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
       - name: Python Semantic Release
         uses: python-semantic-release/python-semantic-release@v10.5.3
+        env:
+          GITHUB_TOKEN: ${{ secrets.ADMIN_PAT }}
         with:
           github_token: ${{ secrets.ADMIN_PAT }}
