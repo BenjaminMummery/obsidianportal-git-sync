@@ -9,12 +9,25 @@ from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
+from lore_bridge.dashboard_config import (
+    DashboardConfig,
+    build_faction_mention_groups,
+    build_pc_mention_groups,
+)
+from lore_bridge.dashboard_defaults import (
+    OPINION_COLORS,
+    OPINION_ORDER,
+    OPINION_SCORE,
+    WEALTH_STYLES,
+)
+
 
 @dataclass
 class LoreRepo:
     """In-memory snapshot of lore paths fetched from GitHub."""
 
     files: dict[str, str]
+    config: DashboardConfig
     characters_dir: str = "lore/characters"
     wiki_dir: str = "lore/wiki"
     file_ext: str = ".textile"
@@ -23,16 +36,11 @@ class LoreRepo:
     def log_dir(self) -> str:
         return f"{self.wiki_dir}/adventure-log"
 
-    @property
-    def adventurers_path(self) -> str:
-        return f"{self.wiki_dir}/wiki/the-adventurers{self.file_ext}"
-
-    @property
-    def journeymans_answer_path(self) -> str:
-        return f"{self.wiki_dir}/wiki/the-journeymans-answer{self.file_ext}"
-
     def read(self, path: str) -> str | None:
         return self.files.get(path)
+
+    def wiki_page_path(self, slug: str) -> str:
+        return self.config.wiki_path(self.wiki_dir, slug, self.file_ext)
 
     def character_paths(self) -> list[str]:
         prefix = f"{self.characters_dir}/"
@@ -50,328 +58,39 @@ class LoreRepo:
             if p.startswith(prefix) and p.endswith(self.file_ext)
         )
 
-PRONOUN_TAGS = {
-    "he/him",
-    "she/her",
-    "they/them",
-    "he/they",
-    "she/they",
-    "any/all",
-}
-MALE_TAGS = {"he/him"}
-FEMALE_TAGS = {"she/her"}
-NB_TAGS = {"they/them", "he/they", "she/they", "any/all"}
-GENDER_LABELS = ["he/him", "she/her", "non-binary"]
-GENDER_TARGETS = [0.45, 0.45, 0.10]
-RACE_TAGS = {
-    "Aarakocra",
-    "Aasimar",
-    "Autognome",
-    "Beast",
-    "Bugbear",
-    "Centaur",
-    "Changeling",
-    "Dhampir",
-    "Dragon",
-    "Dragonborn",
-    "Drow",
-    "Duergar",
-    "Dwarf",
-    "Elf",
-    "Eladrin",
-    "Fairy",
-    "Fey",
-    "Firbolg",
-    "Genasi",
-    "Giff",
-    "Githyanki",
-    "Githzerai",
-    "Gnome",
-    "Goblin",
-    "Goliath",
-    "Grung",
-    "Harengon",
-    "Half-elf",
-    "Half-orc",
-    "Halfling",
-    "Hexblood",
-    "Hobgoblin",
-    "Human",
-    "Kalashtar",
-    "Kenku",
-    "Kobold",
-    "Leonin",
-    "Lizardfolk",
-    "Loxodon",
-    "Minotaur",
-    "Orc",
-    "Owlin",
-    "Plasmoid",
-    "Reborn",
-    "Satyr",
-    "Shifter",
-    "Simic Hybrid",
-    "Tabaxi",
-    "Thri-kreen",
-    "Tiefling",
-    "Tortle",
-    "Triton",
-    "Vedalken",
-    "Verdan",
-    "Warforged",
-    "Yuan-ti",
-}
-RACE_COLORS = {
-    "Human": "#ff6b6b",
-    "Elf": "#6bcb77",
-    "Dwarf": "#c0a060",
-    "Halfling": "#ffd93d",
-    "Gnome": "#4d96ff",
-    "Half-elf": "#9d6bcd",
-    "Half-orc": "#7ec8e3",
-    "Tiefling": "#b48cff",
-    "Dragonborn": "#e8651a",
-    "Genasi": "#f4a261",
-    "Kenku": "#64748b",
-    "Lizardfolk": "#3d9b5a",
-    "Drow": "#383838",
-    "Tabaxi": "#c9a86c",
-    "Fey": "#e85d9a",
-}
-CREATURE_SLUGS = {
-    "zalatan",
-    "razorbeak",
-    "kithrak-the-black",
-    "hunts-by-night",
-    "pads-silently",
-    "arise-to-victory-over-the-infidel-hoards",
-    "nans",
-    "tama",
-    "kithrak-ii",
-}
 
-PC_MENTION_GROUPS = [
-    {
-        "id": "amanira",
-        "name": "Amanira",
-        "color": "#9d6bcd",
-        "link_slugs": ["amanira"],
-        "text_patterns": [r"\bAmanira(?:'s|'s)?\b"],
-    },
-    {
-        "id": "ayr",
-        "name": "Ayr",
-        "color": "#efe9e0",
-        "link_slugs": ["ayr"],
-        "text_patterns": [r"\bAyr(?:'s|'s)?\b"],
-    },
-    {
-        "id": "nakoma-kithrak",
-        "name": "Nakoma / Kithrak",
-        "color": "#383838",
-        "borderColor": "#c8c4bc",
-        "link_slugs": ["nakoma-deathwalker-mor-got-ha", "kithrak-ii"],
-        "text_patterns": [
-            r"Deathwalker(?:'s|'s)?",
-            r"Mor['']got['']ha",
-            r"\bDW(?:'s|'s)?\b",
-            r"Kithrak(?:'s|'s)?\b",
-        ],
-    },
-    {
-        "id": "pin",
-        "name": "Pin",
-        "color": "#a67c52",
-        "link_slugs": ["pin"],
-        "text_patterns": [r"\bPin(?:'s|'s)?\b"],
-    },
-    {
-        "id": "ros-tama",
-        "name": "Ros / Tama",
-        "color": "#3e9b6f",
-        "link_slugs": ["rossin-ros-greyhirst", "tama"],
-        "text_patterns": [
-            r"\bRos(?:'s|'s)?\b",
-            r"\bGreyhirst(?:'s|'s)?\b",
-            r"\bTama(?:'s|'s)?\b",
-            r"giant stoat",
-            r"\bthe stoat\b",
-            r"\bStoat(?:'s|'s)?\b",
-        ],
-    },
-    {
-        "id": "silrie",
-        "name": "Silrie",
-        "color": "#4682d6",
-        "link_slugs": ["silrie-aegiskiir"],
-        "text_patterns": [r"\bSilrie(?:'s|'s)?\b"],
-    },
-    {
-        "id": "wilrin",
-        "name": "Wilrin",
-        "color": "#d94f4f",
-        "link_slugs": ["wilrin-racenglade"],
-        "text_patterns": [r"\bWilrin(?:'s|'s)?\b"],
-    },
-]
+def race_bucket(tags: list[str], config: DashboardConfig) -> str | None:
+    found = [t for t in tags if t in config.race_tags]
+    return found[0] if found else None
 
-FACTION_MENTION_GROUPS = [
-    {
-        "id": "oestra",
-        "name": "Oestra",
-        "color": "#e63946",
-        "link_slugs": ["house-oestra"],
-        "wiki_pages": ["House Oestra"],
-        "text_patterns": [r"House Oestra", r"\bOestra Leageur\b", r"\bthe Leageur\b"],
-    },
-    {
-        "id": "meness",
-        "name": "Meness",
-        "color": "#7ec8e3",
-        "link_slugs": ["house-meness"],
-        "wiki_pages": ["House Meness"],
-        "text_patterns": [r"House Meness", r"\bPanopticon\b"],
-    },
-    {
-        "id": "goela",
-        "name": "Goela",
-        "color": "#b48cff",
-        "link_slugs": ["house-goela"],
-        "wiki_pages": ["House Goela"],
-        "text_patterns": [r"House Goela"],
-    },
-    {
-        "id": "grimbolg",
-        "name": "Grimbolg",
-        "color": "#6bcb77",
-        "link_slugs": ["house-grimbolg"],
-        "wiki_pages": ["House Grimbolg"],
-        "text_patterns": [
-            r"House Grimbolg",
-            r"\bGrimbolg(?:'s|'s)?\b",
-            r"\bCornucopia\b",
-            r"\bAmalthean\b",
-        ],
-    },
-    {
-        "id": "beltus",
-        "name": "Beltus",
-        "color": "#ffd93d",
-        "link_slugs": ["house-beltus", "beltan-institute"],
-        "wiki_pages": ["House Beltus", "Beltan Institute"],
-        "text_patterns": [r"House Beltus", r"\bBeltan Institute\b"],
-    },
-    {
-        "id": "mabon",
-        "name": "Mabon",
-        "color": "#5b9bd5",
-        "link_slugs": ["house-mabon"],
-        "wiki_pages": ["House Mabon"],
-        "text_patterns": [r"House Mabon"],
-    },
-    {
-        "id": "lithra",
-        "name": "Lithra",
-        "color": "#c0c0c0",
-        "link_slugs": ["house-lithra"],
-        "wiki_pages": ["House Lithra"],
-        "text_patterns": [r"House Lithra", r"\bEidolon\b"],
-    },
-    {
-        "id": "anathemists",
-        "name": "Anathemists",
-        "color": "#e8651a",
-        "wiki_pages": ["Anathemists"],
-        "text_patterns": [r"\bAnathemists\b", r"\bAnathemist\b"],
-    },
-    {
-        "id": "black-cats",
-        "name": "Black Cats",
-        "color": "#7a8490",
-        "wiki_pages": ["The Black Cats"],
-        "text_patterns": [r"\bBlack Cats\b"],
-    },
-    {
-        "id": "city-cats",
-        "name": "City Cats",
-        "color": "#c9a86c",
-        "wiki_pages": ["The City Cats"],
-        "text_patterns": [
-            r"\bCity Cats\b",
-            r"\bcity cats\b",
-            r"\bcity cat population\b",
-            r"\bcats of Sindrel\b",
-            r"\bWalks-Among-Us\b",
-            r"\blocal feline populace\b",
-        ],
-    },
-    {
-        "id": "eighth-house",
-        "name": "Eighth House",
-        "color": "#383838",
-        "borderColor": "#c8c4bc",
-        "wiki_pages": ["The Eighth House"],
-        "text_patterns": [
-            r"\bEighth House\b",
-            r"\bSamhain\b",
-            r"\bnecromantic House\b",
-            r"\bdefunct necromantic\b",
-        ],
-    },
-    {
-        "id": "vermillion-company",
-        "name": "Vermillion Company",
-        "color": "#c42126",
-        "wiki_pages": ["The Vermillion Company"],
-        "text_patterns": [r"\bVermillion Company\b", r"\bVermillion\b"],
-    },
-]
 
-HOUSE_FACTION_IDS = {
-    "oestra", "meness", "goela", "grimbolg", "beltus", "mabon", "lithra",
-}
+def pronoun_bucket(tags: list[str], config: DashboardConfig) -> str | None:
+    found = [t for t in tags if t in config.pronoun_tags]
+    if not found:
+        return None
+    tag = found[0]
+    if tag in config.male_tags:
+        return "he/him"
+    if tag in config.female_tags:
+        return "she/her"
+    return "non-binary"
 
-FACTION_CLOCK_COLORS: dict[str, str] = {}
-for _g in FACTION_MENTION_GROUPS:
-    FACTION_CLOCK_COLORS[_g["name"]] = _g["color"]
-    for _page in _g.get("wiki_pages", []):
-        FACTION_CLOCK_COLORS[_page] = _g["color"]
-    if _g["id"] in HOUSE_FACTION_IDS:
-        FACTION_CLOCK_COLORS[f"House {_g['name']}"] = _g["color"]
 
-OPINION_ORDER = [
-    "Hostile",
-    "Oppositional",
-    "Wary",
-    "Cool",
-    "Neutral",
-    "Favourable",
-    "Friendly",
-    "Allied",
-    "Bonded",
-]
+def _path_stem(path: str, ext: str) -> str:
+    name = path.rsplit("/", 1)[-1]
+    if name.endswith(ext):
+        return name[: -len(ext)]
+    return name
 
-OPINION_SCORE = {name: i + 1 for i, name in enumerate(OPINION_ORDER)}
 
-OPINION_COLORS = {
-    "Hostile": "#c42126",
-    "Oppositional": "#e63946",
-    "Wary": "#ff9f43",
-    "Cool": "#ffd93d",
-    "Neutral": "#9a9288",
-    "Favourable": "#8ecf9a",
-    "Friendly": "#6bcb77",
-    "Allied": "#3d9b5a",
-    "Bonded": "#1e6b38",
-}
-
-WEALTH_STYLES = {
-    1: {"bg": "#5e1013", "fg": "#ffcdd2", "name": "Strapped"},
-    2: {"bg": "#8a4f00", "fg": "#ffe0b2", "name": "Scraping by"},
-    3: {"bg": "#8a7010", "fg": "#fff9c4", "name": "Comfortable"},
-    4: {"bg": "#1b5e20", "fg": "#c8e6c9", "name": "Well-funded"},
-    5: {"bg": "#006064", "fg": "#b2ebf2", "name": "Opulent"},
-}
+def _npc_for_demographics(char: dict, config: DashboardConfig) -> bool:
+    if char["is_pc"]:
+        return False
+    if char["slug"] in config.npc_exclude_slugs:
+        return False
+    if char["slug"] in config.npc_creature_slugs:
+        return False
+    return True
 
 
 def parse_frontmatter(text: str) -> dict:
@@ -401,31 +120,8 @@ def parse_frontmatter(text: str) -> dict:
     return fm
 
 
-def race_bucket(tags: list[str]) -> str | None:
-    found = [t for t in tags if t in RACE_TAGS]
-    return found[0] if found else None
-
-
-def pronoun_bucket(tags: list[str]) -> str | None:
-    found = [t for t in tags if t in PRONOUN_TAGS]
-    if not found:
-        return None
-    tag = found[0]
-    if tag in MALE_TAGS:
-        return "he/him"
-    if tag in FEMALE_TAGS:
-        return "she/her"
-    return "non-binary"
-
-
-def _path_stem(path: str, ext: str) -> str:
-    name = path.rsplit("/", 1)[-1]
-    if name.endswith(ext):
-        return name[: -len(ext)]
-    return name
-
-
 def load_characters(repo: LoreRepo) -> list[dict]:
+    config = repo.config
     rows = []
     for path in repo.character_paths():
         text = repo.read(path)
@@ -433,15 +129,16 @@ def load_characters(repo: LoreRepo) -> list[dict]:
             continue
         stem = _path_stem(path, repo.file_ext)
         fm = parse_frontmatter(text)
+        tags = fm.get("tags") or []
         rows.append(
             {
                 "slug": stem,
                 "name": fm.get("name", stem),
                 "is_pc": fm.get("is_player_character") == "true",
-                "tags": fm.get("tags") or [],
-                "pronoun": pronoun_bucket(fm.get("tags") or []),
-                "race": race_bucket(fm.get("tags") or []),
-                "creature": stem in CREATURE_SLUGS,
+                "tags": tags,
+                "pronoun": pronoun_bucket(tags, config),
+                "race": race_bucket(tags, config),
+                "creature": stem in config.npc_creature_slugs,
             }
         )
     return rows
@@ -480,21 +177,21 @@ def short_name(name: str) -> str:
     return name[:14]
 
 
-def race_chart_data(characters: list[dict]) -> dict:
+def race_chart_data(characters: list[dict], config: DashboardConfig) -> dict:
     npcs = [
         c
         for c in characters
-        if not c["is_pc"] and not c["creature"] and c["race"]
+        if _npc_for_demographics(c, config) and c["race"]
     ]
     counts = Counter(c["race"] for c in npcs)
     labels = [race for race, _ in counts.most_common()]
     values = [counts[label] for label in labels]
-    colors = [RACE_COLORS.get(label, "#9a9288") for label in labels]
+    colors = [config.race_colors.get(label, "#9a9288") for label in labels]
     tagged_n = sum(values)
     untagged = [
         c["slug"]
         for c in characters
-        if not c["is_pc"] and not c["creature"] and not c["race"]
+        if _npc_for_demographics(c, config) and not c["race"]
     ]
     return {
         "labels": labels,
@@ -506,25 +203,26 @@ def race_chart_data(characters: list[dict]) -> dict:
     }
 
 
-def gender_chart_data(characters: list[dict]) -> dict:
+def gender_chart_data(characters: list[dict], config: DashboardConfig) -> dict:
+    labels = config.gender_labels
     npcs = [
         c
         for c in characters
-        if not c["is_pc"] and not c["creature"] and c["pronoun"]
+        if _npc_for_demographics(c, config) and c["pronoun"]
     ]
     counts = Counter(c["pronoun"] for c in npcs)
-    values = [counts.get(label, 0) for label in GENDER_LABELS]
+    values = [counts.get(label, 0) for label in labels]
     tagged_n = sum(values)
     untagged = [
         c["slug"]
         for c in characters
-        if not c["is_pc"] and not c["creature"] and not c["pronoun"]
+        if _npc_for_demographics(c, config) and not c["pronoun"]
     ]
     return {
-        "labels": GENDER_LABELS,
+        "labels": labels,
         "counts": values,
         "percents": rounded_percents(values, tagged_n),
-        "targets": GENDER_TARGETS,
+        "targets": config.gender_targets,
         "tagged": tagged_n,
         "untagged": untagged,
     }
@@ -583,14 +281,15 @@ def strip_textile(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
-def parse_adventurers(repo: LoreRepo) -> dict:
-    text = repo.read(repo.adventurers_path)
+def parse_campaign_status(repo: LoreRepo) -> dict:
+    path = repo.config.campaign_status_path(repo.wiki_dir, repo.file_ext)
+    text = repo.read(path)
     if not text:
         return {
             "wealth": {},
-            "stay": {},
             "campaign": {},
             "factions": {"as_of": "", "entries": []},
+            "status_as_of": "",
         }
     wealth_level = 3
     wealth_name = "Comfortable"
@@ -620,40 +319,21 @@ def parse_adventurers(repo: LoreRepo) -> dict:
             if line.startswith("* "):
                 assets.append(strip_textile(line[2:].strip()))
 
-    stay_days: int | None = None
-    stay_limit = 36
-    stay_as_of = ""
-    stay_detail = ""
-    stay_match = re.search(
-        r"h[34]\. Days remaining in Sindrel\s*\n+\*\*~?(\d+)\s*days?\*\*(.*)",
-        text,
-        re.S | re.I,
-    )
-    if stay_match:
-        stay_days = int(stay_match.group(1))
-        detail_line = stay_match.group(2).strip().split("\n")[0]
-        stay_detail = strip_textile(detail_line)
-    else:
-        fallback = re.search(r"~(\d+)\s*days'? stay remaining", text, re.I)
-        if fallback:
-            stay_days = int(fallback.group(1))
-
+    status_as_of = ""
     wealth_as_of = re.search(
         r"h[23]\. Party Wealth\s*\n\n_Through Session (\d+) \(([^)]+)\)\._", text
     )
     if wealth_as_of:
-        stay_as_of = f"Session {wealth_as_of.group(1)} ({wealth_as_of.group(2)})"
+        status_as_of = f"Session {wealth_as_of.group(1)} ({wealth_as_of.group(2)})"
     else:
-        status_as_of = re.search(
+        status_as_of_match = re.search(
             r"h[23]\. Campaign status\s*\n\n_Through Session (\d+) \(([^)]+)\)\._",
             text,
         )
-        if status_as_of:
-            stay_as_of = f"Session {status_as_of.group(1)} ({status_as_of.group(2)})"
-
-    limit_match = re.search(r"(\d+)-day visitor limit", text, re.I)
-    if limit_match:
-        stay_limit = int(limit_match.group(1))
+        if status_as_of_match:
+            status_as_of = (
+                f"Session {status_as_of_match.group(1)} ({status_as_of_match.group(2)})"
+            )
 
     campaign: dict = {}
     date_match = re.search(r"\*\*Current date:\*\*\s*([^\n]+)", text, re.I)
@@ -694,11 +374,21 @@ def parse_adventurers(repo: LoreRepo) -> dict:
                     "opinion": opinion,
                     "rationale": rationale,
                     "score": OPINION_SCORE.get(opinion, 0),
-                    "color": FACTION_CLOCK_COLORS.get(
-                        name, OPINION_COLORS.get(opinion, "#9a9288")
-                    ),
+                    "color": OPINION_COLORS.get(opinion, "#9a9288"),
                 }
             )
+
+    for i, entry in enumerate(factions):
+        cfg = repo.config.faction_mentions.get(entry["name"]) or {}
+        if cfg.get("color"):
+            entry["color"] = cfg["color"]
+
+    mention_groups = build_faction_mention_groups(factions, repo.config)
+    color_by_name = {g["name"]: g["color"] for g in mention_groups}
+    for entry in factions:
+        entry["color"] = color_by_name.get(
+            entry["name"], OPINION_COLORS.get(entry["opinion"], "#9a9288")
+        )
 
     style = WEALTH_STYLES.get(wealth_level, WEALTH_STYLES[3])
     return {
@@ -710,29 +400,75 @@ def parse_adventurers(repo: LoreRepo) -> dict:
             "pending": pending,
             "assets": assets,
         },
-        "stay": {
-            "days": stay_days,
-            "limit": stay_limit,
-            "as_of": stay_as_of,
-            "detail": stay_detail,
-        },
         "campaign": campaign,
         "factions": {"as_of": as_of, "entries": factions},
+        "status_as_of": status_as_of,
     }
 
 
-def parse_journeymans_answer_charges(repo: LoreRepo) -> dict:
-    text = repo.read(repo.journeymans_answer_path)
-    if not text:
-        return {}
-    m = re.search(
-        r"\*\*Stored charges:\*\*\s*(\d+)\s*(?:_\(([^)]+)\)_)?",
+def _wiki_text(repo: LoreRepo, slug: str | None) -> str:
+    if slug:
+        return repo.read(repo.wiki_page_path(slug)) or ""
+    return repo.read(repo.config.campaign_status_path(repo.wiki_dir, repo.file_ext)) or ""
+
+
+def parse_stay_bar(text: str, tile: dict, status_as_of: str) -> dict:
+    heading = tile.get("heading") or "Days remaining"
+    heading_re = re.escape(heading).replace(r"\ ", r"\s+")
+    stay_days: int | None = None
+    stay_limit = int(tile.get("default_limit") or 36)
+    stay_detail = ""
+    stay_match = re.search(
+        rf"h[34]\.\s*{heading_re}\s*\n+\*\*~?(\d+)\s*days?\*\*(.*)",
         text,
+        re.S | re.I,
     )
+    if stay_match:
+        stay_days = int(stay_match.group(1))
+        detail_line = stay_match.group(2).strip().split("\n")[0]
+        stay_detail = strip_textile(detail_line)
+    else:
+        fallback = tile.get("fallback_pattern") or r"~(\d+)\s*days'? stay remaining"
+        fb = re.search(fallback, text, re.I)
+        if fb:
+            stay_days = int(fb.group(1))
+
+    limit_pattern = tile.get("limit_pattern") or r"(\d+)-day visitor limit"
+    limit_match = re.search(limit_pattern, text, re.I)
+    if limit_match:
+        stay_limit = int(limit_match.group(1))
+
+    return {
+        "days": stay_days,
+        "limit": stay_limit,
+        "as_of": status_as_of,
+        "detail": stay_detail,
+    }
+
+
+def parse_charge_count(text: str, tile: dict) -> dict:
+    pattern = tile.get("pattern") or r"\*\*Stored charges:\*\*\s*(\d+)\s*(?:_\(([^)]+)\)_)?"
+    m = re.search(pattern, text)
     if not m:
         return {}
-    as_of = strip_textile(m.group(2).strip()) if m.group(2) else ""
+    as_of = strip_textile(m.group(2).strip()) if m.lastindex and m.lastindex >= 2 and m.group(2) else ""
     return {"charges": int(m.group(1)), "as_of": as_of}
+
+
+def parse_custom_tiles(repo: LoreRepo, status: dict) -> dict[str, dict]:
+    cs_text = repo.read(repo.config.campaign_status_path(repo.wiki_dir, repo.file_ext)) or ""
+    out: dict[str, dict] = {}
+    for tile in repo.config.custom_tiles:
+        tid = tile.get("id") or tile.get("title", "tile").lower().replace(" ", "-")
+        ttype = tile.get("type")
+        if ttype == "stay_bar":
+            source = _wiki_text(repo, tile.get("wiki_slug")) or cs_text
+            out[tid] = parse_stay_bar(source, tile, status.get("status_as_of", ""))
+        elif ttype == "charge_count":
+            out[tid] = parse_charge_count(_wiki_text(repo, tile.get("wiki_slug")), tile)
+        else:
+            out[tid] = {}
+    return out
 
 
 def faction_chart_data(adventurers: dict) -> dict:
@@ -785,25 +521,22 @@ def build_proportion_chart(sessions: list[dict], groups: list[dict], color_key: 
     }
 
 
-def pc_mentions_chart_data(repo: LoreRepo) -> dict:
+def pc_mentions_chart_data(repo: LoreRepo, groups: list[dict]) -> dict:
     sessions = []
     for s in load_adventure_sessions(repo):
-        counts = {g["id"]: count_group_mentions(s["body"], g) for g in PC_MENTION_GROUPS}
+        counts = {g["id"]: count_group_mentions(s["body"], g) for g in groups}
         total = sum(counts.values())
         sessions.append({**s, "counts": counts, "total": total})
-    return build_proportion_chart(sessions, PC_MENTION_GROUPS, "color")
+    return build_proportion_chart(sessions, groups, "color")
 
 
-def faction_mentions_chart_data(repo: LoreRepo) -> dict:
+def faction_mentions_chart_data(repo: LoreRepo, groups: list[dict]) -> dict:
     sessions = []
     for s in load_adventure_sessions(repo):
-        counts = {
-            g["id"]: count_group_mentions(s["body"], g)
-            for g in FACTION_MENTION_GROUPS
-        }
+        counts = {g["id"]: count_group_mentions(s["body"], g) for g in groups}
         total = sum(counts.values())
         sessions.append({**s, "counts": counts, "total": total})
-    return build_proportion_chart(sessions, FACTION_MENTION_GROUPS, "color")
+    return build_proportion_chart(sessions, groups, "color")
 
 
 def markdown_summary(
@@ -899,7 +632,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Lords of Sindrel - Lore dashboard</title>
+  <title>__TITLE__ - Lore dashboard</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <style>
     :root {
@@ -1136,43 +869,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   </style>
 </head>
 <body>
-  <h1>Lords of Sindrel</h1>
+  <h1>__TITLE__</h1>
   <p class="meta">Generated __GENERATED__ UTC from GitHub <code>__BRANCH__</code> · <a href="/health" style="color: var(--muted)">bridge status</a> · <a href="/docs" style="color: var(--muted)">API docs</a></p>
 
   <div class="dashboard">
     <div class="col-left">
-      <section class="panel panel-bridge">
-        <h2>Lore bridge</h2>
-        __BRIDGE_BLOCK__
-      </section>
-
-      <section class="panel status-date">
-        <h2>Current date</h2>
-        __DATE_BLOCK__
-      </section>
-
-      <section class="panel status-stay">
-        <h2>Time remaining</h2>
-        __STAY_BLOCK__
-      </section>
-
-      <section class="panel panel-clocks">
-        <h2>Faction clocks</h2>
-        <p class="note">__FACTION_AS_OF__</p>
-        <div class="chart-wrap" style="height: __FACTION_CHART_HEIGHT__px">
-          <canvas id="factionChart"></canvas>
-        </div>
-      </section>
-
-      <section class="panel wealth-panel">
-        <h2>Wonch wealth</h2>
-        __WEALTH_BLOCK__
-      </section>
-
-      <section class="panel item-tracker-panel">
-        <h2>The Journeyman's Answer</h2>
-        __GREETING_BLOCK__
-      </section>
+      __LEFT_COLUMN__
     </div>
 
     <div class="col-right">
@@ -1550,21 +1252,88 @@ def wealth_block(wealth: dict) -> str:
     return badge + pending + detail
 
 
-def greeting_block(greeting: dict) -> str:
-    if greeting.get("charges") is None:
+def charge_block(data: dict, tile: dict) -> str:
+    if data.get("charges") is None:
         return '<p class="note">No charge data found.</p>'
-    charges = greeting["charges"]
-    label = "charge" if charges == 1 else "charges"
-    sub = f"stored {label} · +1 at dawn"
-    as_of = greeting.get("as_of") or ""
+    charges = data["charges"]
+    singular = tile.get("label_singular") or "charge"
+    plural = tile.get("label_plural") or "charges"
+    label = singular if charges == 1 else plural
+    sub = tile.get("sub_label") or f"stored {label}"
+    sub = sub.replace("{label}", label).replace("{charges}", str(charges))
+    as_of = data.get("as_of") or ""
     as_of_html = (
         f'<div class="stat-sub">{html.escape(as_of)}</div>' if as_of else ""
     )
+    color = tile.get("color") or "#efe9e0"
     return (
-        f'<div class="stay-number" style="color:#efe9e0">{charges}</div>'
-        f'<div class="stat-sub">{sub}</div>'
+        f'<div class="stay-number" style="color:{color}">{charges}</div>'
+        f'<div class="stat-sub">{html.escape(sub)}</div>'
         f"{as_of_html}"
     )
+
+
+def custom_tile_section(tile: dict, data: dict) -> str:
+    title = html.escape(tile.get("title") or "Custom")
+    tid = html.escape(tile.get("id") or "custom")
+    ttype = tile.get("type")
+    if ttype == "stay_bar":
+        body = stay_block(data)
+    elif ttype == "charge_count":
+        body = charge_block(data, tile)
+    else:
+        body = '<p class="note">Unknown custom tile type.</p>'
+    return (
+        f'<section class="panel custom-tile-{tid}">'
+        f"<h2>{title}</h2>{body}</section>"
+    )
+
+
+def build_left_column(
+    config: DashboardConfig,
+    *,
+    bridge_block: str,
+    campaign: dict,
+    wealth: dict,
+    faction_as_of: str,
+    faction_chart_height_px: int,
+    custom_tiles: dict[str, dict],
+) -> str:
+    sections: list[str] = [
+        '<section class="panel panel-bridge">'
+        "<h2>Lore bridge</h2>"
+        f"{bridge_block}</section>",
+        '<section class="panel status-date">'
+        "<h2>Current date</h2>"
+        f"{date_block(campaign)}</section>",
+    ]
+
+    def tiles_after(marker: str) -> None:
+        for tile in config.custom_tiles:
+            if (tile.get("after") or "date") == marker:
+                tid = tile.get("id") or tile.get("title", "tile").lower().replace(" ", "-")
+                sections.append(custom_tile_section(tile, custom_tiles.get(tid, {})))
+
+    tiles_after("date")
+
+    sections.append(
+        '<section class="panel panel-clocks">'
+        "<h2>Faction clocks</h2>"
+        f'<p class="note">{html.escape(faction_as_of)}</p>'
+        f'<div class="chart-wrap" style="height: {faction_chart_height_px}px">'
+        '<canvas id="factionChart"></canvas></div></section>'
+    )
+
+    sections.append(
+        '<section class="panel wealth-panel">'
+        f"<h2>{html.escape(config.party_wealth_title)}</h2>"
+        f"{wealth_block(wealth)}</section>"
+    )
+
+    tiles_after("wealth")
+    tiles_after("end")
+
+    return "\n\n      ".join(sections)
 
 
 def _format_ts_display(value: str | None) -> str:
@@ -1671,11 +1440,11 @@ def render_html(
     faction_mentions: dict,
     faction: dict,
     wealth: dict,
-    stay: dict,
     campaign: dict,
-    greeting: dict,
     generated: str,
     *,
+    config: DashboardConfig,
+    custom_tiles: dict[str, dict],
     branch: str,
     bridge_status: dict,
 ) -> str:
@@ -1697,10 +1466,20 @@ def render_html(
 
     as_of = faction.get("as_of") or "As of latest GM notes"
     bridge_block, bridge_poll = bridge_status_block(bridge_status)
+    left_column = build_left_column(
+        config,
+        bridge_block=bridge_block,
+        campaign=campaign,
+        wealth=wealth,
+        faction_as_of=as_of,
+        faction_chart_height_px=faction_chart_height(len(faction.get("labels", []))),
+        custom_tiles=custom_tiles,
+    )
     return (
-        HTML_TEMPLATE.replace("__GENERATED__", generated)
+        HTML_TEMPLATE.replace("__TITLE__", html.escape(config.title))
+        .replace("__GENERATED__", generated)
         .replace("__BRANCH__", html.escape(branch))
-        .replace("__BRIDGE_BLOCK__", bridge_block)
+        .replace("__LEFT_COLUMN__", left_column)
         .replace("__BRIDGE_POLL_SCRIPT__", bridge_poll)
         .replace("__GENDER_PIE_TOTAL__", str(sum(gender["counts"])))
         .replace("__UNTAGGED__", str(len(gender["untagged"])))
@@ -1708,15 +1487,6 @@ def render_html(
         .replace("__RACE_PIE_TOTAL__", str(sum(race["counts"])))
         .replace("__RACE_UNTAGGED__", str(len(race["untagged"])))
         .replace("__RACE_UNTAGGED_LIST__", race_untagged_list)
-        .replace("__FACTION_AS_OF__", html.escape(as_of))
-        .replace(
-            "__FACTION_CHART_HEIGHT__",
-            str(faction_chart_height(len(faction.get("labels", [])))),
-        )
-        .replace("__DATE_BLOCK__", date_block(campaign))
-        .replace("__STAY_BLOCK__", stay_block(stay))
-        .replace("__WEALTH_BLOCK__", wealth_block(wealth))
-        .replace("__GREETING_BLOCK__", greeting_block(greeting))
         .replace("__GENDER_JSON__", json.dumps(gender))
         .replace("__RACE_JSON__", json.dumps(race))
         .replace("__MENTIONS_JSON__", json.dumps(mentions))
@@ -1726,25 +1496,29 @@ def render_html(
 
 
 def generate_dashboard_html(repo: LoreRepo, *, bridge_status: dict, branch: str) -> str:
+    config = repo.config
     characters = load_characters(repo)
     generated = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
-    gender = gender_chart_data(characters)
-    race = race_chart_data(characters)
-    mentions = pc_mentions_chart_data(repo)
-    faction_mentions = faction_mentions_chart_data(repo)
-    adventurers = parse_adventurers(repo)
-    faction = faction_chart_data(adventurers)
+    gender = gender_chart_data(characters, config)
+    race = race_chart_data(characters, config)
+    pc_groups = build_pc_mention_groups(characters, config)
+    status = parse_campaign_status(repo)
+    faction_groups = build_faction_mention_groups(status["factions"]["entries"], config)
+    mentions = pc_mentions_chart_data(repo, pc_groups)
+    faction_mentions = faction_mentions_chart_data(repo, faction_groups)
+    faction = faction_chart_data(status)
+    custom_tiles = parse_custom_tiles(repo, status)
     return render_html(
         gender,
         race,
         mentions,
         faction_mentions,
         faction,
-        adventurers["wealth"],
-        adventurers["stay"],
-        adventurers["campaign"],
-        parse_journeymans_answer_charges(repo),
+        status["wealth"],
+        status["campaign"],
         generated,
+        config=config,
+        custom_tiles=custom_tiles,
         branch=branch,
         bridge_status=bridge_status,
     )

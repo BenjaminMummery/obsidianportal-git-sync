@@ -81,6 +81,134 @@ All of the above require `Authorization: Bearer <LORE_BRIDGE_API_KEY>`.
 - `GET /sync/jobs/{job_id}` — poll async sync progress and final result.
 - `GET /sync/jobs/current` — currently running job, if any.
 
+- `GET /` — **Lore dashboard** (HTML). Reads the connected lore repo and `metadata/lore-dashboard.json`; no API key required. Cached ~120s.
+
+### Lore dashboard
+
+The bridge serves a campaign dashboard at `/`. Campaign-specific behaviour lives in the **lore repo** at `metadata/lore-dashboard.json` (override path with `LORE_DASHBOARD_CONFIG` on the bridge).
+
+**Default tiles** (always rendered when data is available):
+
+| Tile | Source |
+|------|--------|
+| Lore bridge | Bridge `/health` (sync timestamps, active job) |
+| PC mentions | Adventure logs; PCs from `is_player_character: true` character pages |
+| Current date | Campaign status wiki page |
+| Party wealth | Same page — `h2. Party Wealth` / `h3. Current standing` |
+| Faction clocks | GM block on campaign status page — faction table |
+| Faction mentions | Adventure logs; faction list derived from faction clocks |
+| NPC gender / race | Character tags; bridge defaults with optional lore-repo overrides |
+
+**Campaign status wiki page** (`campaign_status.wiki_slug`, default `home-page`):
+
+Player-facing body:
+
+```textile
+h2. Campaign status
+
+_Through Session 12 (31st Enean 4218 SC)._
+
+**Current date:** 31st Enean 4218 ([[The Soulwind Calendar | SC]])
+**As of session:** 12
+
+h2. Party Wealth
+
+_Through Session 12 (31st Enean 4218 SC)._
+
+h3. Current standing
+
+**Wealth level:** <span style="background:#fff9c4;padding:3px 8px;border-radius:3px;color:#f57f17;">3 — Comfortable</span>
+
+Summary prose…
+
+*Pending:* optional contingent reward
+
+h3. Other assets
+
+* Silver guest bracelets
+```
+
+GM block (single `<!-- GM_INFO_START -->` … `<!-- GM_INFO_END -->` at file bottom):
+
+```textile
+h2. Faction Clocks
+
+_Through Session 12 (31st Enean 4218 SC)._
+
+|_. Faction |_. Opinion |_. Rationale |
+| [[House Meness | House Meness]] | Friendly | … |
+```
+
+Opinion values must match the nine-step scale in bridge defaults (`Hostile` … `Bonded`).
+
+**`metadata/lore-dashboard.json` schema** (merged over bridge defaults):
+
+```json
+{
+  "title": "My Campaign",
+  "party_wealth_title": "Party wealth",
+  "campaign_status": { "wiki_slug": "the-adventurers" },
+  "pc_mentions": {
+    "groups": [
+      {
+        "id": "pair-id",
+        "name": "Alice / Bob",
+        "character_slugs": ["alice", "bob"],
+        "text_patterns": ["\\bAlias\\b"],
+        "color": "#383838",
+        "borderColor": "#c8c4bc"
+      }
+    ]
+  },
+  "npc_demographics": {
+    "exclude_slugs": [],
+    "creature_slugs": ["familiar-slug"],
+    "extra_race_tags": ["CustomRace"],
+    "race_colors": { "CustomRace": "#9a9288" }
+  },
+  "faction_mentions": {
+    "House Example": {
+      "link_slugs": ["house-example"],
+      "wiki_pages": ["House Example"],
+      "text_patterns": ["\\bNickname\\b"],
+      "color": "#e63946"
+    }
+  },
+  "custom_tiles": [
+    {
+      "id": "stay",
+      "title": "Time remaining",
+      "type": "stay_bar",
+      "after": "date",
+      "heading": "Days remaining in Sindrel",
+      "limit_pattern": "(\\d+)-day visitor limit"
+    },
+    {
+      "id": "item",
+      "title": "Magic item charges",
+      "type": "charge_count",
+      "after": "wealth",
+      "wiki_slug": "the-item-page",
+      "pattern": "\\*\\*Stored charges:\\*\\*\\s*(\\d+)",
+      "sub_label": "stored {label} · +1 at dawn"
+    }
+  ]
+}
+```
+
+**Custom tile types:**
+
+- `stay_bar` — reads `h3.` section on campaign status page (or `wiki_slug` override). Expects `**~N days**` under the heading.
+- `charge_count` — regex on a wiki page (`wiki_slug` required). First capture group = count; optional second group in `_((as-of note))_` for subtitle.
+
+`after` controls left-column placement: `date` (default), `wealth`, or `end`.
+
+PCs not listed in `pc_mentions.groups` are auto-added (one group per PC, short name from character page).
+
+Faction mention groups are built from the faction clocks table. Keys in `faction_mentions` match faction names from that table and add link patterns, colours, and aliases. Great Houses automatically match their short name too (`House Beltus` also counts `Beltus`).
+
+NPC gender/race tag sets and chart palettes live in `dashboard_defaults.py` (bridge). Override with `npc_demographics` in the lore config.
+
 - `POST /github/webhook`
   - Optional GitHub webhook endpoint for push-to-main publishing.
   - Ignores bridge-authored commits to avoid webhook loops.
@@ -150,7 +278,7 @@ Wiki pages with GM-only info use `<!-- GM_INFO_START -->` / `<!-- GM_INFO_END --
 
 ### Character sheet template (D&D Beyond-style)
 
-For player characters synced from D&D Beyond, use the custom Obsidian Portal DST in `metadata/dst/sindrel-beyond/`. It mirrors DDB section layout (defenses, abilities, skills, actions, spellcasting, etc.) as display-only `dynamic_sheet` fields. Install instructions and the field map are in that folder's README.
+For player characters synced from D&D Beyond, use the custom Obsidian Portal DST in your **lore repo** (e.g. `metadata/dst/sindrel-beyond/`). It mirrors DDB section layout (defenses, abilities, skills, actions, spellcasting, etc.) as display-only `dynamic_sheet` fields. Install instructions and the field map are in that folder's README.
 
 If you put this repo in front of players, remember that GM info may remain in Git history even after deletion.
 

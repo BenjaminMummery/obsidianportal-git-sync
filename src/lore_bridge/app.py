@@ -24,6 +24,7 @@ from requests_oauthlib import OAuth1
 
 from lore_bridge import __version__
 from lore_bridge.dashboard import LoreRepo, generate_dashboard_html
+from lore_bridge.dashboard_config import collect_repo_paths, load_dashboard_config, parse_config_json
 from lore_bridge.dndbeyond.gm import migrate_character_features, needs_feature_migration
 from lore_bridge.dndbeyond.sync import DdbSyncResult, sync_from_dndbeyond_impl
 
@@ -46,13 +47,16 @@ GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
 GITHUB_OWNER = os.environ.get("GITHUB_OWNER", "")
 GITHUB_REPO = os.environ.get("GITHUB_REPO", "")
 GITHUB_BRANCH = os.environ.get("GITHUB_BRANCH", "main")
-GITHUB_AUTHOR_NAME = os.environ.get("GITHUB_AUTHOR_NAME", "Sindrel Lore Bridge")
+GITHUB_AUTHOR_NAME = os.environ.get("GITHUB_AUTHOR_NAME", "Lore Bridge")
 GITHUB_AUTHOR_EMAIL = os.environ.get("GITHUB_AUTHOR_EMAIL", "lore-bridge@example.com")
 GITHUB_WEBHOOK_SECRET = os.environ.get("GITHUB_WEBHOOK_SECRET", "")
 
 LORE_WIKI_DIR = os.environ.get("LORE_WIKI_DIR", "lore/wiki").strip("/")
 LORE_CHARACTERS_DIR = os.environ.get("LORE_CHARACTERS_DIR", "lore/characters").strip("/")
 LORE_STATE_PATH = os.environ.get("LORE_STATE_PATH", "metadata/sync-state.json").strip("/")
+LORE_DASHBOARD_CONFIG_PATH = os.environ.get(
+    "LORE_DASHBOARD_CONFIG", "metadata/lore-dashboard.json"
+).strip("/")
 LORE_FILE_EXT = os.environ.get("LORE_FILE_EXT", ".textile").strip()
 if not LORE_FILE_EXT.startswith("."):
     LORE_FILE_EXT = f".{LORE_FILE_EXT}"
@@ -66,7 +70,7 @@ GITHUB_API_RETRY_BASE_SECONDS = float(os.environ.get("GITHUB_API_RETRY_BASE_SECO
 GITHUB_RETRY_STATUS_CODES = {429, 500, 502, 503, 504}
 
 app = FastAPI(
-    title="Sindrel Lore Bridge",
+    title=os.environ.get("LORE_BRIDGE_TITLE", "Lore Bridge"),
     version=__version__,
     description="Bidirectional Obsidian Portal ↔ GitHub lore sync bridge with pull-through conflict protection.",
 )
@@ -1763,27 +1767,37 @@ def fetch_lore_repo() -> LoreRepo:
     ensure_github()
     tree = gh_list_tree()
     blob_index = gh_repo_blob_index(tree)
-    char_prefix = f"{LORE_CHARACTERS_DIR}/"
-    log_prefix = f"{LORE_WIKI_DIR}/adventure-log/"
-    extra = {
-        f"{LORE_WIKI_DIR}/wiki/the-adventurers{LORE_FILE_EXT}",
-        f"{LORE_WIKI_DIR}/wiki/the-journeymans-answer{LORE_FILE_EXT}",
-    }
-    needed_paths: list[str] = []
-    for path in blob_index:
-        if path.startswith(char_prefix) and path.endswith(LORE_FILE_EXT):
-            needed_paths.append(path)
-        elif path.startswith(log_prefix) and path.endswith(LORE_FILE_EXT):
-            needed_paths.append(path)
-        elif path in extra:
-            needed_paths.append(path)
+    config_path = LORE_DASHBOARD_CONFIG_PATH
+    config_raw = ""
+    config_data: dict = {}
+    if config_path in blob_index:
+        config_file = gh_get_file(config_path, blob_sha=blob_index.get(config_path))
+        if config_file:
+            config_raw = config_file.content
+            config_data = parse_config_json(config_raw)
+    config = load_dashboard_config(config_data)
+    log_dir = f"{LORE_WIKI_DIR}/adventure-log"
+    needed_paths = collect_repo_paths(
+        config,
+        characters_dir=LORE_CHARACTERS_DIR,
+        wiki_dir=LORE_WIKI_DIR,
+        log_dir=log_dir,
+        file_ext=LORE_FILE_EXT,
+        config_path=config_path,
+        blob_paths=list(blob_index.keys()),
+    )
     files: dict[str, str] = {}
+    if config_raw:
+        files[config_path] = config_raw
     for path in needed_paths:
+        if path in files:
+            continue
         file = gh_get_file(path, blob_sha=blob_index.get(path))
         if file:
             files[path] = file.content
     return LoreRepo(
         files=files,
+        config=config,
         characters_dir=LORE_CHARACTERS_DIR,
         wiki_dir=LORE_WIKI_DIR,
         file_ext=LORE_FILE_EXT,
