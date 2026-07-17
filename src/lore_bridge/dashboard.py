@@ -1080,7 +1080,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         options: {
           responsive: true,
           maintainAspectRatio: false,
-          interaction: { mode: "index", intersect: false },
+          interaction: { mode: "nearest", intersect: false },
           scales: {
             x: {
               stacked: true,
@@ -1116,6 +1116,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
               },
             },
             tooltip: {
+              mode: "nearest",
+              intersect: false,
               callbacks: {
                 title(items) {
                   const i = items[0].dataIndex;
