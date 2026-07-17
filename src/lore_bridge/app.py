@@ -22,6 +22,8 @@ from pydantic import BaseModel
 from rapidfuzz import fuzz
 from requests_oauthlib import OAuth1
 
+from lore_bridge import __version__
+from lore_bridge.dashboard import LoreRepo, generate_dashboard_html
 from lore_bridge.dndbeyond.gm import migrate_character_features, needs_feature_migration
 from lore_bridge.dndbeyond.sync import DdbSyncResult, sync_from_dndbeyond_impl
 
@@ -38,6 +40,7 @@ ACCESS_TOKEN_SECRET = os.environ.get("OP_ACCESS_TOKEN_SECRET", "")
 CAMPAIGN_ID = os.environ.get("OP_CAMPAIGN_ID", "")
 BRIDGE_KEY = os.environ.get("LORE_BRIDGE_API_KEY", "")
 CACHE_TTL_SECONDS = int(os.environ.get("CACHE_TTL_SECONDS", "900"))
+DASHBOARD_CACHE_TTL = int(os.environ.get("DASHBOARD_CACHE_TTL", "120"))
 
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
 GITHUB_OWNER = os.environ.get("GITHUB_OWNER", "")
@@ -64,7 +67,7 @@ GITHUB_RETRY_STATUS_CODES = {429, 500, 502, 503, 504}
 
 app = FastAPI(
     title="Sindrel Lore Bridge",
-    version="0.9.1",
+    version=__version__,
     description="Bidirectional Obsidian Portal ↔ GitHub lore sync bridge with pull-through conflict protection.",
 )
 
@@ -81,6 +84,7 @@ _jobs: dict[str, "SyncJobRecord"] = {}
 _active_job_id: str | None = None
 _job_lock = threading.Lock()
 _sync_status_cache: dict[str, Any] = {"last_portal_pull": None, "last_git_publish": None, "fetched_at": 0.0}
+_dashboard_cache: dict[str, Any] = {"html": "", "fetched_at": 0.0, "commit_sha": ""}
 SYNC_STATUS_CACHE_TTL = 60
 
 PHASE_LABELS = {
@@ -1747,6 +1751,64 @@ def get_sync_job(job_id: str) -> SyncJobRecord:
     return job
 
 
+def github_head_sha() -> str | None:
+    try:
+        branch = gh_api("GET", f"/branches/{GITHUB_BRANCH}")
+        return branch["commit"]["sha"]
+    except Exception:
+        return None
+
+
+def fetch_lore_repo() -> LoreRepo:
+    ensure_github()
+    tree = gh_list_tree()
+    blob_index = gh_repo_blob_index(tree)
+    char_prefix = f"{LORE_CHARACTERS_DIR}/"
+    log_prefix = f"{LORE_WIKI_DIR}/adventure-log/"
+    extra = {
+        f"{LORE_WIKI_DIR}/wiki/the-adventurers{LORE_FILE_EXT}",
+        f"{LORE_WIKI_DIR}/wiki/the-journeymans-answer{LORE_FILE_EXT}",
+    }
+    needed_paths: list[str] = []
+    for path in blob_index:
+        if path.startswith(char_prefix) and path.endswith(LORE_FILE_EXT):
+            needed_paths.append(path)
+        elif path.startswith(log_prefix) and path.endswith(LORE_FILE_EXT):
+            needed_paths.append(path)
+        elif path in extra:
+            needed_paths.append(path)
+    files: dict[str, str] = {}
+    for path in needed_paths:
+        file = gh_get_file(path, blob_sha=blob_index.get(path))
+        if file:
+            files[path] = file.content
+    return LoreRepo(
+        files=files,
+        characters_dir=LORE_CHARACTERS_DIR,
+        wiki_dir=LORE_WIKI_DIR,
+        file_ext=LORE_FILE_EXT,
+    )
+
+
+def dashboard_html(*, force: bool = False) -> str:
+    now = time.time()
+    head = github_head_sha()
+    cached_sha = _dashboard_cache.get("commit_sha")
+    if (
+        not force
+        and _dashboard_cache.get("html")
+        and now - float(_dashboard_cache.get("fetched_at") or 0) < DASHBOARD_CACHE_TTL
+        and head
+        and head == cached_sha
+    ):
+        return str(_dashboard_cache["html"])
+    repo = fetch_lore_repo()
+    payload = health_payload(authenticated=False)
+    html_out = generate_dashboard_html(repo, bridge_status=payload, branch=GITHUB_BRANCH)
+    _dashboard_cache.update({"html": html_out, "fetched_at": now, "commit_sha": head or ""})
+    return html_out
+
+
 # ----------------------------- API routes -----------------------------
 
 def health_payload(*, authenticated: bool) -> dict[str, Any]:
@@ -1912,11 +1974,18 @@ def wants_html(request: Request) -> bool:
     return "text/html" in accept and "application/json" not in accept
 
 
-@app.get("/", response_class=HTMLResponse, response_model=None)
+@app.get("/", response_model=None)
 def root(request: Request):
-    payload = health_payload(authenticated=False)
     if wants_html(request):
-        return HTMLResponse(status_html(payload))
+        try:
+            return HTMLResponse(dashboard_html())
+        except HTTPException:
+            raise
+        except Exception:
+            logger.exception("dashboard generation failed")
+            payload = health_payload(authenticated=False)
+            return HTMLResponse(status_html(payload), status_code=503)
+    payload = health_payload(authenticated=False)
     return JSONResponse(payload)
 
 

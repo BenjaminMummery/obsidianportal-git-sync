@@ -20,6 +20,32 @@ Working on the lore can therefore be done in a local IDE with all of the advanta
 
 If you watch the bridge repo after a sync, it will look like nothing happened. Check the **lore repo** for `lore/wiki/`, `lore/characters/`, and `metadata/sync-state.json`.
 
+## Development
+
+### Conventional commits
+
+This repo uses [Commitizen](https://commitizen-tools.github.io/commitizen/) via pre-commit to enforce [Conventional Commits](https://www.conventionalcommits.org/) on the `commit-msg` hook.
+
+```bash
+uv sync --group dev
+uv run pre-commit install --install-hooks
+```
+
+Use prefixes such as `feat:`, `fix:`, `docs:`, `chore:`, `ci:`, `refactor:`, `test:`, `perf:`, `style:`, and `build:`.
+
+### Versioning and release
+
+The package version lives in `src/lore_bridge/__init__.py` (`__version__`). Hatch reads it for builds; do not duplicate it elsewhere.
+
+On push to `main`, the **Semantic Release** workflow (`.github/workflows/semantic-release.yml`) runs [python-semantic-release](https://python-semantic-release.readthedocs.io/) to:
+
+- determine the next version from conventional commits since the last tag
+- update `__version__` and `CHANGELOG.md`
+- commit, tag (`vX.Y.Z`), and push back to `main`
+- attach build artifacts to the GitHub release
+
+Requires an `ADMIN_PAT` repository secret with `contents: write` (same pattern as `pre-commit-hooks`).
+
 ## What it does
 
 ### Read / lore assistant endpoints
